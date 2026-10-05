@@ -1,9 +1,8 @@
 #include <cerrno>
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <limits>
+#include <optional>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -31,6 +30,16 @@ struct BuildFile {
     std::string directory;
     fs::path output;
     std::vector<Step> steps;
+};
+
+struct GitFile {
+    std::string projectName;
+    fs::path output;
+};
+
+struct WizardResult {
+    BuildFile buildFile;
+    std::optional<GitFile> gitFile;
 };
 
 std::string trim(const std::string& value) {
@@ -157,13 +166,101 @@ bool writeBuildFile(const BuildFile& buildFile, std::string& error) {
     return true;
 }
 
-BuildFile runWizard() {
-    std::cout << "\n" << kPurple << kBold << "  Kizuku — Haiku build-file generator  " << kReset << "\n\n";
+bool writeGitFile(const GitFile& gitFile, std::string& error) {
+    if (gitFile.output.has_parent_path()) {
+        std::error_code directoryError;
+        fs::create_directories(gitFile.output.parent_path(), directoryError);
+        if (directoryError) {
+            error = "cannot create Git script directory: " + directoryError.message();
+            return false;
+        }
+    }
+
+    std::ofstream output(gitFile.output);
+    if (!output) {
+        error = "cannot open " + gitFile.output.string() + " for writing";
+        return false;
+    }
+
+    output << "#!/bin/sh\n\n";
+    output << "set -eu\n\n";
+    output << "script_directory=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\n\n";
+    output << "if ! command -v git >/dev/null 2>&1; then\n";
+    output << "    echo \"error: git is not installed or is not in PATH\" >&2\n";
+    output << "    exit 1\n";
+    output << "fi\n\n";
+    output << "if ! command -v gum >/dev/null 2>&1; then\n";
+    output << "    echo \"error: gum is not installed or is not in PATH\" >&2\n";
+    output << "    echo \"Install Gum, then run this script again.\" >&2\n";
+    output << "    exit 1\n";
+    output << "fi\n\n";
+    output << "if [ \"$(git -C \"$script_directory\" rev-parse --is-inside-work-tree 2>/dev/null)\" != \"true\" ]; then\n";
+    output << "    echo \"error: $script_directory is not a Git working tree\" >&2\n";
+    output << "    exit 1\n";
+    output << "fi\n\n";
+    output << "gum style --bold --foreground 56 "
+           << shellDoubleQuoted("Updating " + gitFile.projectName + "'s Git repository") << "\n\n";
+    output << "# Stage every addition, modification, and deletion in this repository.\n";
+    output << "git -C \"$script_directory\" add -A\n\n";
+    output << "if git -C \"$script_directory\" diff --cached --quiet; then\n";
+    output << "    gum style --foreground 214 \"There are no changes to commit.\"\n";
+    output << "    exit 0\n";
+    output << "fi\n\n";
+    output << "gum style --bold \"Staged changes\"\n";
+    output << "git -C \"$script_directory\" status --short\n";
+    output << "printf '\\n'\n\n";
+    output << "commit_title=$(gum input \\\n";
+    output << "    --prompt \"Commit title: \" \\\n";
+    output << "    --placeholder \"Briefly describe the change\")\n\n";
+    output << "if [ -z \"$commit_title\" ]; then\n";
+    output << "    gum style --foreground 196 \"A commit title is required. The changes remain staged.\"\n";
+    output << "    exit 1\n";
+    output << "fi\n\n";
+    output << "commit_details=$(gum write \\\n";
+    output << "    --header \"Commit details (optional; Ctrl+D when finished)\" \\\n";
+    output << "    --placeholder \"Explain what changed and why\")\n\n";
+    output << "if [ -n \"$commit_details\" ]; then\n";
+    output << "    git -C \"$script_directory\" commit -m \"$commit_title\" -m \"$commit_details\"\n";
+    output << "else\n";
+    output << "    git -C \"$script_directory\" commit -m \"$commit_title\"\n";
+    output << "fi\n\n";
+    output << "branch=$(git -C \"$script_directory\" branch --show-current)\n";
+    output << "if [ -z \"$branch\" ]; then\n";
+    output << "    gum style --foreground 214 \"Commit created in detached HEAD state; it was not pushed.\"\n";
+    output << "    exit 0\n";
+    output << "fi\n\n";
+    output << "if ! gum confirm --default=false \"Push '$branch' now?\"; then\n";
+    output << "    gum style --foreground 214 \"Commit created locally and not pushed.\"\n";
+    output << "    exit 0\n";
+    output << "fi\n\n";
+    output << "if git -C \"$script_directory\" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1; then\n";
+    output << "    git -C \"$script_directory\" push\n";
+    output << "elif git -C \"$script_directory\" remote get-url origin >/dev/null 2>&1; then\n";
+    output << "    git -C \"$script_directory\" push --set-upstream origin \"$branch\"\n";
+    output << "else\n";
+    output << "    gum style --foreground 196 \"No upstream branch or 'origin' remote is configured.\"\n";
+    output << "    exit 1\n";
+    output << "fi\n";
+    output.close();
+
+    if (!output) {
+        error = "failed while writing " + gitFile.output.string();
+        return false;
+    }
+    if (::chmod(gitFile.output.c_str(), 0755) != 0) {
+        error = "Git script was written, but could not be made executable (errno " +
+                std::to_string(errno) + ")";
+        return false;
+    }
+    return true;
+}
+
+WizardResult runWizard() {
+    std::cout << "\n" << kPurple << kBold << "  Kizuku — Haiku script generator  " << kReset << "\n\n";
 
     const auto projectName = prompt("Project name", "My Project");
     const auto version = prompt("Builder version", "1.0");
     const auto directory = prompt("Project directory", "/boot/home/my-project/");
-    const auto output = prompt("Output build file", "build.sh");
 
     std::vector<Step> steps;
     if (confirm("Include a clean step?")) {
@@ -179,20 +276,26 @@ BuildFile runWizard() {
         const auto command = prompt("Run command", "./my-project");
         steps.push_back({"Run / Test", "Run?", "#6f3a63", {command}});
     }
+    const fs::path output = steps.empty() ? fs::path{} : fs::path(prompt("Output build file", "build.sh"));
 
-    return {projectName + " Builder v" + version, directory, output, steps};
+    std::optional<GitFile> gitFile;
+    if (confirm("Create a Git commit-and-push script?", false)) {
+        gitFile = GitFile{projectName, prompt("Output Git script", "git.sh")};
+    }
+
+    return {{projectName + " Builder v" + version, directory, output, steps}, gitFile};
 }
 
 void printUsage(const char* executable) {
     std::cout << "Usage: " << executable << "\n\n"
-              << "Kizuku starts an interactive build-file wizard.\n";
+              << "Kizuku starts an interactive build and Git script wizard.\n";
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
     try {
-        BuildFile buildFile;
+        WizardResult result;
         if (argc == 2 && (std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h")) {
             printUsage(argv[0]);
             return 0;
@@ -200,22 +303,38 @@ int main(int argc, char** argv) {
             printUsage(argv[0]);
             return 2;
         } else {
-            buildFile = runWizard();
+            result = runWizard();
         }
 
-        if (buildFile.steps.empty()) {
-            std::cerr << "No build steps selected; nothing was written.\n";
+        if (result.buildFile.steps.empty() && !result.gitFile) {
+            std::cerr << "No build steps or Git script selected; nothing was written.\n";
             return 1;
         }
 
         std::string error;
-        if (!writeBuildFile(buildFile, error)) {
-            std::cerr << "kizuku: " << error << "\n";
+        if (!result.buildFile.steps.empty() && result.gitFile &&
+            fs::absolute(result.buildFile.output) == fs::absolute(result.gitFile->output)) {
+            std::cerr << "kizuku: the build file and Git script cannot use the same path\n";
             return 1;
         }
 
-        std::cout << "\n" << kAmber << "Created " << fs::absolute(buildFile.output).string()
-                  << kReset << "\n";
+        if (!result.buildFile.steps.empty()) {
+            if (!writeBuildFile(result.buildFile, error)) {
+                std::cerr << "kizuku: " << error << "\n";
+                return 1;
+            }
+            std::cout << "\n" << kAmber << "Created "
+                      << fs::absolute(result.buildFile.output).string() << kReset << "\n";
+        }
+
+        if (result.gitFile) {
+            if (!writeGitFile(*result.gitFile, error)) {
+                std::cerr << "kizuku: " << error << "\n";
+                return 1;
+            }
+            std::cout << kAmber << "Created " << fs::absolute(result.gitFile->output).string()
+                      << kReset << "\n";
+        }
         return 0;
     } catch (const std::exception& exception) {
         std::cerr << "kizuku: " << exception.what() << "\n";
