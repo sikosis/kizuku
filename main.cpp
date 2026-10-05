@@ -1,4 +1,7 @@
 #include <cerrno>
+#include <cctype>
+#include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -8,6 +11,7 @@
 #include <vector>
 
 #include <sys/stat.h>
+#include <unistd.h>
 
 namespace fs = std::filesystem;
 
@@ -17,6 +21,10 @@ constexpr const char* kReset = "\033[0m";
 constexpr const char* kBold = "\033[1m";
 constexpr const char* kAmber = "\033[38;2;232;183;106m";
 constexpr const char* kPurple = "\033[38;2;111;58;99m";
+constexpr const char* kName = "Kizuku";
+constexpr const char* kVersion = "0.0";
+
+bool gUseHum = false;
 
 struct Step {
     std::string heading;
@@ -51,7 +59,82 @@ std::string trim(const std::string& value) {
     return value.substr(first, last - first + 1);
 }
 
+std::string shellSingleQuoted(const std::string& value);
+
+std::string shellDoubleQuoted(const std::string& value) {
+    std::string escaped;
+    escaped.reserve(value.size() + 2);
+    escaped.push_back('"');
+    for (const char character : value) {
+        if (character == '"' || character == '\\' || character == '$' || character == '`') {
+            escaped.push_back('\\');
+        }
+        escaped.push_back(character);
+    }
+    escaped.push_back('"');
+    return escaped;
+}
+
+bool executableInPath(const std::string& executable) {
+    const char* pathValue = std::getenv("PATH");
+    if (pathValue == nullptr) {
+        return false;
+    }
+
+    std::string paths(pathValue);
+    std::size_t start = 0;
+    while (start <= paths.size()) {
+        const auto end = paths.find(':', start);
+        const auto directory = paths.substr(start, end == std::string::npos ? end : end - start);
+        const fs::path candidate = (directory.empty() ? fs::path(".") : fs::path(directory)) / executable;
+        if (::access(candidate.c_str(), X_OK) == 0) {
+            return true;
+        }
+        if (end == std::string::npos) {
+            break;
+        }
+        start = end + 1;
+    }
+    return false;
+}
+
+std::string humCommand(const std::vector<std::string>& arguments) {
+    std::string command = "hum";
+    for (const auto& argument : arguments) {
+        command += " " + shellSingleQuoted(argument);
+    }
+    return command;
+}
+
+std::optional<std::string> captureHum(const std::vector<std::string>& arguments) {
+    FILE* pipe = ::popen(humCommand(arguments).c_str(), "r");
+    if (pipe == nullptr) {
+        return std::nullopt;
+    }
+
+    std::string output;
+    char buffer[256];
+    while (std::fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+        output += buffer;
+    }
+    const int status = ::pclose(pipe);
+    if (status != 0) {
+        return std::nullopt;
+    }
+    return trim(output);
+}
+
 std::string prompt(const std::string& label, const std::string& fallback = {}) {
+    if (gUseHum) {
+        std::vector<std::string> arguments = {"input", "--prompt", label + ": ", "--no-show-help"};
+        if (!fallback.empty()) {
+            arguments.insert(arguments.end(), {"--value", fallback});
+        }
+        if (const auto answer = captureHum(arguments)) {
+            return answer->empty() ? fallback : *answer;
+        }
+    }
+
     std::cout << kBold << label << kReset;
     if (!fallback.empty()) {
         std::cout << " [" << fallback << "]";
@@ -67,6 +150,17 @@ std::string prompt(const std::string& label, const std::string& fallback = {}) {
 }
 
 bool confirm(const std::string& label, bool fallback = true) {
+    if (gUseHum) {
+        const int status = std::system(humCommand(
+            {"confirm", "--default", fallback ? "yes" : "no", "--no-show-help", label}).c_str());
+        if (status == 0) {
+            return true;
+        }
+        if (status != -1) {
+            return false;
+        }
+    }
+
     while (true) {
         const auto answer = prompt(label + (fallback ? " (Y/n)" : " (y/N)"));
         if (answer.empty()) {
@@ -82,18 +176,51 @@ bool confirm(const std::string& label, bool fallback = true) {
     }
 }
 
-std::string shellDoubleQuoted(const std::string& value) {
-    std::string escaped;
-    escaped.reserve(value.size() + 2);
-    escaped.push_back('"');
-    for (const char character : value) {
-        if (character == '"' || character == '\\' || character == '$' || character == '`') {
-            escaped.push_back('\\');
+void showStyled(const std::string& text, const std::string& colour, bool bordered = false) {
+    if (gUseHum) {
+        std::vector<std::string> arguments = {"style", "--bold", "--foreground", colour};
+        if (bordered) {
+            arguments.insert(arguments.end(), {"--border", "rounded", "--padding", "1 2"});
         }
-        escaped.push_back(character);
+        arguments.push_back(text);
+        if (std::system(humCommand(arguments).c_str()) == 0) {
+            return;
+        }
     }
-    escaped.push_back('"');
-    return escaped;
+    std::cout << (colour == "#6f3a63" ? kPurple : kAmber) << kBold << text << kReset << "\n";
+}
+
+std::string projectSlug(const std::string& projectName) {
+    std::string slug;
+    bool previousDash = false;
+    for (const unsigned char character : projectName) {
+        if (std::isalnum(character)) {
+            slug.push_back(static_cast<char>(std::tolower(character)));
+            previousDash = false;
+        } else if (!slug.empty() && !previousDash) {
+            slug.push_back('-');
+            previousDash = true;
+        }
+    }
+    while (!slug.empty() && slug.back() == '-') {
+        slug.pop_back();
+    }
+    return slug.empty() ? "project" : slug;
+}
+
+std::string selectProjectDirectory(const std::string& projectName) {
+    const std::string suggested = "/boot/home/" + projectSlug(projectName) + "/";
+    if (gUseHum) {
+        const fs::path start = fs::exists("/boot/home") ? fs::path("/boot/home") : fs::current_path();
+        if (const auto selection = captureHum({"file", "--no-file", "--directory",
+                                               "--header", "Select the project directory",
+                                               start.string()})) {
+            if (!selection->empty()) {
+                return *selection;
+            }
+        }
+    }
+    return prompt("Project directory", suggested);
 }
 
 std::string shellSingleQuoted(const std::string& value) {
@@ -189,34 +316,34 @@ bool writeGitFile(const GitFile& gitFile, std::string& error) {
     output << "    echo \"error: git is not installed or is not in PATH\" >&2\n";
     output << "    exit 1\n";
     output << "fi\n\n";
-    output << "if ! command -v gum >/dev/null 2>&1; then\n";
-    output << "    echo \"error: gum is not installed or is not in PATH\" >&2\n";
-    output << "    echo \"Install Gum, then run this script again.\" >&2\n";
+    output << "if ! command -v hum >/dev/null 2>&1; then\n";
+    output << "    echo \"error: hum is not installed or is not in PATH\" >&2\n";
+    output << "    echo \"Install Hum, then run this script again.\" >&2\n";
     output << "    exit 1\n";
     output << "fi\n\n";
     output << "if [ \"$(git -C \"$script_directory\" rev-parse --is-inside-work-tree 2>/dev/null)\" != \"true\" ]; then\n";
     output << "    echo \"error: $script_directory is not a Git working tree\" >&2\n";
     output << "    exit 1\n";
     output << "fi\n\n";
-    output << "gum style --bold --foreground 56 "
+    output << "hum style --bold --foreground 56 "
            << shellDoubleQuoted("Updating " + gitFile.projectName + "'s Git repository") << "\n\n";
     output << "# Stage every addition, modification, and deletion in this repository.\n";
     output << "git -C \"$script_directory\" add -A\n\n";
     output << "if git -C \"$script_directory\" diff --cached --quiet; then\n";
-    output << "    gum style --foreground 214 \"There are no changes to commit.\"\n";
+    output << "    hum style --foreground 214 \"There are no changes to commit.\"\n";
     output << "    exit 0\n";
     output << "fi\n\n";
-    output << "gum style --bold \"Staged changes\"\n";
+    output << "hum style --bold \"Staged changes\"\n";
     output << "git -C \"$script_directory\" status --short\n";
     output << "printf '\\n'\n\n";
-    output << "commit_title=$(gum input \\\n";
+    output << "commit_title=$(hum input \\\n";
     output << "    --prompt \"Commit title: \" \\\n";
     output << "    --placeholder \"Briefly describe the change\")\n\n";
     output << "if [ -z \"$commit_title\" ]; then\n";
-    output << "    gum style --foreground 196 \"A commit title is required. The changes remain staged.\"\n";
+    output << "    hum style --foreground 196 \"A commit title is required. The changes remain staged.\"\n";
     output << "    exit 1\n";
     output << "fi\n\n";
-    output << "commit_details=$(gum write \\\n";
+    output << "commit_details=$(hum write \\\n";
     output << "    --header \"Commit details (optional; Ctrl+D when finished)\" \\\n";
     output << "    --placeholder \"Explain what changed and why\")\n\n";
     output << "if [ -n \"$commit_details\" ]; then\n";
@@ -226,11 +353,11 @@ bool writeGitFile(const GitFile& gitFile, std::string& error) {
     output << "fi\n\n";
     output << "branch=$(git -C \"$script_directory\" branch --show-current)\n";
     output << "if [ -z \"$branch\" ]; then\n";
-    output << "    gum style --foreground 214 \"Commit created in detached HEAD state; it was not pushed.\"\n";
+    output << "    hum style --foreground 214 \"Commit created in detached HEAD state; it was not pushed.\"\n";
     output << "    exit 0\n";
     output << "fi\n\n";
-    output << "if ! gum confirm --default=false \"Push '$branch' now?\"; then\n";
-    output << "    gum style --foreground 214 \"Commit created locally and not pushed.\"\n";
+    output << "if ! hum confirm --default no \"Push '$branch' now?\"; then\n";
+    output << "    hum style --foreground 214 \"Commit created locally and not pushed.\"\n";
     output << "    exit 0\n";
     output << "fi\n\n";
     output << "if git -C \"$script_directory\" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1; then\n";
@@ -238,7 +365,7 @@ bool writeGitFile(const GitFile& gitFile, std::string& error) {
     output << "elif git -C \"$script_directory\" remote get-url origin >/dev/null 2>&1; then\n";
     output << "    git -C \"$script_directory\" push --set-upstream origin \"$branch\"\n";
     output << "else\n";
-    output << "    gum style --foreground 196 \"No upstream branch or 'origin' remote is configured.\"\n";
+    output << "    hum style --foreground 196 \"No upstream branch or 'origin' remote is configured.\"\n";
     output << "    exit 1\n";
     output << "fi\n";
     output.close();
@@ -256,13 +383,19 @@ bool writeGitFile(const GitFile& gitFile, std::string& error) {
 }
 
 WizardResult runWizard() {
-    std::cout << "\n" << kPurple << kBold << "  Kizuku — Haiku script generator  " << kReset << "\n\n";
+    std::cout << "\n";
+    showStyled(std::string(kName) + " v" + kVersion + " — Haiku command-line helper",
+               "#6f3a63", true);
+    std::cout << "\n";
 
     const auto projectName = prompt("Project name", "My Project");
     const auto version = prompt("Builder version", "1.0");
-    const auto directory = prompt("Project directory", "/boot/home/my-project/");
+    const auto directory = selectProjectDirectory(projectName);
 
     std::vector<Step> steps;
+    if (confirm("Include an Update Code step (git pull)?")) {
+        steps.push_back({"Update Code", "Git Pull?", "#f2cc60", {"git pull"}});
+    }
     if (confirm("Include a clean step?")) {
         steps.push_back({"Make Clean", "Make Clean?", "#e8b76a", {prompt("Clean command", "make clean")}});
     }
@@ -287,17 +420,28 @@ WizardResult runWizard() {
 }
 
 void printUsage(const char* executable) {
-    std::cout << "Usage: " << executable << "\n\n"
-              << "Kizuku starts an interactive build and Git script wizard.\n";
+    std::cout << kName << " v" << kVersion << "\n"
+              << "Haiku command-line helper for generating interactive build and Git scripts.\n\n"
+              << "Usage: " << executable << " [OPTION]\n\n"
+              << "Options:\n"
+              << "  -h, --help       Show this help\n"
+              << "  -v, --version    Show the Kizuku version\n\n"
+              << "When Hum is available, Kizuku uses it for prompts, styling, confirmation,\n"
+              << "and project-directory selection. Plain terminal prompts are used otherwise.\n";
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
     try {
+        gUseHum = ::isatty(STDIN_FILENO) != 0 && ::isatty(STDOUT_FILENO) != 0 &&
+                  executableInPath("hum");
         WizardResult result;
         if (argc == 2 && (std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h")) {
             printUsage(argv[0]);
+            return 0;
+        } else if (argc == 2 && (std::string(argv[1]) == "--version" || std::string(argv[1]) == "-v")) {
+            std::cout << kName << " v" << kVersion << "\n";
             return 0;
         } else if (argc != 1) {
             printUsage(argv[0]);
@@ -323,8 +467,8 @@ int main(int argc, char** argv) {
                 std::cerr << "kizuku: " << error << "\n";
                 return 1;
             }
-            std::cout << "\n" << kAmber << "Created "
-                      << fs::absolute(result.buildFile.output).string() << kReset << "\n";
+            std::cout << "\n";
+            showStyled("Created " + fs::absolute(result.buildFile.output).string(), "#e8b76a");
         }
 
         if (result.gitFile) {
@@ -332,8 +476,7 @@ int main(int argc, char** argv) {
                 std::cerr << "kizuku: " << error << "\n";
                 return 1;
             }
-            std::cout << kAmber << "Created " << fs::absolute(result.gitFile->output).string()
-                      << kReset << "\n";
+            showStyled("Created " + fs::absolute(result.gitFile->output).string(), "#e8b76a");
         }
         return 0;
     } catch (const std::exception& exception) {

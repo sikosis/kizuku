@@ -1,13 +1,13 @@
 # Kizuku
 
-kizuku (japanese: "to notice/to build") is a small native C++ terminal application for Haiku. It creates executable,
-interactive build files powered by `hum` and optional Git helper scripts powered
-by `gum`.
+kizuku (japanese: "to notice/to build") is a small native C++ terminal helper
+for Haiku. It creates executable interactive build files and optional Git helper
+scripts, using `hum` throughout when it is available.
 
 ## Requirement
 
-- `hum` for generated build files
-- `git` and `gum` for generated Git scripts
+- `hum` for enhanced Kizuku prompts and generated scripts
+- `git` for Git update and commit/push operations
 
 see: https://github.com/sikosis/hum/
 
@@ -19,12 +19,13 @@ make
 ```
 
 The wizard asks for a project name, working directory, output filename and the
-clean, build, test, and run commands to include. The generated file uses `hum`
-for its styled headings and confirmation prompts, so `hum` must be available in
-`PATH` when a generated build file is run.
+update-code, clean, build, test, and run commands to include. When `hum` is in
+`PATH`, Kizuku uses its styling, input, confirmation, and directory-picker
+commands. Without `hum`, Kizuku falls back to ordinary terminal prompts. The
+default project directory is derived from the project name under `/boot/home/`.
 
 Kizuku can also generate a standalone POSIX shell script that stages all Git
-changes, gathers a commit title and optional details with `gum`, commits them,
+changes, gathers a commit title and optional details with `hum`, commits them,
 and optionally pushes the current branch. The Git script is located relative to
 itself, so place it in the repository it should manage.
 
@@ -53,4 +54,3 @@ and validates its Bash syntax.
 
 - Designed by Sikosis
 - Creation Date: 3rd October, 2026
-
