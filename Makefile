@@ -1,4 +1,6 @@
 CXX ?= c++
+VERSION := $(shell tr -d '\r\n' < VERSION)
+CPPFLAGS += -DKIZUKU_VERSION=\"$(VERSION)\"
 CXXFLAGS ?= -O2 -Wall -Wextra -Wpedantic
 CXXFLAGS += -std=c++17
 
@@ -9,8 +11,8 @@ SOURCES := main.cpp
 
 all: $(TARGET)
 
-$(TARGET): $(SOURCES)
-	$(CXX) $(CXXFLAGS) -o $@ $(SOURCES)
+$(TARGET): $(SOURCES) VERSION
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $(SOURCES)
 
 test: $(TARGET)
 	./tests/test_generator.sh

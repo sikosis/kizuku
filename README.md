@@ -23,6 +23,17 @@ update-code, clean, build, test, and run commands to include. When `hum` is in
 `PATH`, Kizuku uses its styling, input, confirmation, and directory-picker
 commands. Without `hum`, Kizuku falls back to ordinary terminal prompts. The
 default project directory is derived from the project name under `/boot/home/`.
+Each generated project receives a numeric title colour selected from the full
+1–255 terminal palette. Step headings use one of three grouped themes selected
+during generation:
+
+- **Kizuku** — the original amber, orange, and plum palette
+- **Coast** — cool cyan, blue, and violet tones
+- **Sakura** — pink, magenta, and purple tones
+
+When `hum` is available the theme is selected with `hum choose`; the terminal
+fallback accepts the theme name. The palettes are kept together as theme data so
+more choices can be added without changing the step generator.
 
 Kizuku can also generate a standalone POSIX shell script that stages all Git
 changes, gathers a commit title and optional details with `hum`, commits them,
@@ -45,10 +56,6 @@ make test
 
 The test drives the wizard, checks that its generated build file is executable,
 and validates its Bash syntax.
-
-## TODO
-
-- Random or suite of colours for the steps and title heading
 
 ## Author
 

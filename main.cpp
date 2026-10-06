@@ -1,4 +1,5 @@
 #include <cerrno>
+#include <array>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -6,6 +7,7 @@
 #include <fstream>
 #include <iostream>
 #include <optional>
+#include <random>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -17,12 +19,16 @@ namespace fs = std::filesystem;
 
 namespace {
 
+#ifndef KIZUKU_VERSION
+#define KIZUKU_VERSION "0.1"
+#endif
+
 constexpr const char* kReset = "\033[0m";
 constexpr const char* kBold = "\033[1m";
 constexpr const char* kAmber = "\033[38;2;232;183;106m";
 constexpr const char* kPurple = "\033[38;2;111;58;99m";
 constexpr const char* kName = "Kizuku";
-constexpr const char* kVersion = "0.0";
+constexpr const char* kVersion = KIZUKU_VERSION;
 
 bool gUseHum = false;
 
@@ -33,8 +39,47 @@ struct Step {
     std::vector<std::string> commands;
 };
 
+struct Theme {
+    const char* name;
+    const char* updateCode;
+    const char* clean;
+    const char* build;
+    const char* test;
+    const char* run;
+};
+
+// Built-in palettes are data-only so more themes can be added without changing
+// how build steps are assembled.
+constexpr std::array<Theme, 3> kThemes = {{
+    {
+        "Kizuku",
+        "#f2cc60",
+        "#e8b76a",
+        "#d98a4e",
+        "#d98a3e",
+        "#6f3a63",
+    },
+    {
+        "Coast",
+        "#73d2de",
+        "#52b2cf",
+        "#2e86ab",
+        "#33658a",
+        "#7b6dba",
+    },
+    {
+        "Sakura",
+        "#ffb3c6",
+        "#ff8fab",
+        "#fb6f92",
+        "#c77dff",
+        "#7b2cbf",
+    },
+}};
+
 struct BuildFile {
     std::string title;
+    std::string titleColour;
     std::string directory;
     fs::path output;
     std::vector<Step> steps;
@@ -43,6 +88,9 @@ struct BuildFile {
 struct GitFile {
     std::string projectName;
     fs::path output;
+    std::string headingColour;
+    std::string informationColour;
+    std::string errorColour;
 };
 
 struct WizardResult {
@@ -57,6 +105,12 @@ std::string trim(const std::string& value) {
     }
     const auto last = value.find_last_not_of(" \t\r\n");
     return value.substr(first, last - first + 1);
+}
+
+std::string randomColour() {
+    static std::mt19937 generator(std::random_device{}());
+    static std::uniform_int_distribution<int> distribution(1, 255);
+    return std::to_string(distribution(generator));
 }
 
 std::string shellSingleQuoted(const std::string& value);
@@ -187,7 +241,7 @@ void showStyled(const std::string& text, const std::string& colour, bool bordere
             return;
         }
     }
-    std::cout << (colour == "#6f3a63" ? kPurple : kAmber) << kBold << text << kReset << "\n";
+    std::cout << (bordered ? kPurple : kAmber) << kBold << text << kReset << "\n";
 }
 
 std::string projectSlug(const std::string& projectName) {
@@ -223,6 +277,43 @@ std::string selectProjectDirectory(const std::string& projectName) {
     return prompt("Project directory", suggested);
 }
 
+const Theme& selectTheme() {
+    if (gUseHum) {
+        std::vector<std::string> arguments = {
+            "choose", "--header", "Choose a colour theme", "--selected", kThemes.front().name,
+        };
+        for (const auto& theme : kThemes) {
+            arguments.push_back(theme.name);
+        }
+        if (const auto selection = captureHum(arguments)) {
+            for (const auto& theme : kThemes) {
+                if (*selection == theme.name) {
+                    return theme;
+                }
+            }
+        }
+    }
+
+    while (true) {
+        const auto selection = prompt("Theme (Kizuku, Coast, Sakura)", kThemes.front().name);
+        std::string normalised;
+        normalised.reserve(selection.size());
+        for (const unsigned char character : selection) {
+            normalised.push_back(static_cast<char>(std::tolower(character)));
+        }
+        for (const auto& theme : kThemes) {
+            std::string themeName(theme.name);
+            for (char& character : themeName) {
+                character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+            }
+            if (normalised == themeName) {
+                return theme;
+            }
+        }
+        std::cout << "Choose Kizuku, Coast, or Sakura.\n";
+    }
+}
+
 std::string shellSingleQuoted(const std::string& value) {
     std::string escaped = "'";
     for (const char character : value) {
@@ -237,7 +328,9 @@ std::string shellSingleQuoted(const std::string& value) {
 }
 
 void writeStep(std::ostream& output, const Step& step, std::size_t number) {
-    output << "hum style --foreground " << shellDoubleQuoted(step.colour)
+    const std::string colour = !step.colour.empty() && step.colour.front() == '#'
+        ? shellDoubleQuoted(step.colour) : step.colour;
+    output << "hum style --foreground " << colour
            << " --bold " << shellDoubleQuoted("==> Step " + std::to_string(number) + ": " + step.heading)
            << "\n";
     output << "if hum confirm " << shellDoubleQuoted(step.question) << "; then\n";
@@ -270,7 +363,8 @@ bool writeBuildFile(const BuildFile& buildFile, std::string& error) {
     output << "    echo \"This build file requires hum.\" >&2\n";
     output << "    exit 127\n";
     output << "fi\n\n";
-    output << "hum style --border rounded --foreground 41 --padding \"1 2\" "
+    output << "hum style --border rounded --foreground " << buildFile.titleColour
+           << " --padding \"1 2\" "
               "--margin \"1 0\" --bold "
            << shellDoubleQuoted(buildFile.title) << "\n\n";
     output << "if hum confirm \"Continue?\"; then\n\n";
@@ -325,12 +419,13 @@ bool writeGitFile(const GitFile& gitFile, std::string& error) {
     output << "    echo \"error: $script_directory is not a Git working tree\" >&2\n";
     output << "    exit 1\n";
     output << "fi\n\n";
-    output << "hum style --bold --foreground 56 "
+    output << "hum style --bold --foreground " << gitFile.headingColour << " "
            << shellDoubleQuoted("Updating " + gitFile.projectName + "'s Git repository") << "\n\n";
     output << "# Stage every addition, modification, and deletion in this repository.\n";
     output << "git -C \"$script_directory\" add -A\n\n";
     output << "if git -C \"$script_directory\" diff --cached --quiet; then\n";
-    output << "    hum style --foreground 214 \"There are no changes to commit.\"\n";
+    output << "    hum style --foreground " << gitFile.informationColour
+           << " \"There are no changes to commit.\"\n";
     output << "    exit 0\n";
     output << "fi\n\n";
     output << "hum style --bold \"Staged changes\"\n";
@@ -340,7 +435,8 @@ bool writeGitFile(const GitFile& gitFile, std::string& error) {
     output << "    --prompt \"Commit title: \" \\\n";
     output << "    --placeholder \"Briefly describe the change\")\n\n";
     output << "if [ -z \"$commit_title\" ]; then\n";
-    output << "    hum style --foreground 196 \"A commit title is required. The changes remain staged.\"\n";
+    output << "    hum style --foreground " << gitFile.errorColour
+           << " \"A commit title is required. The changes remain staged.\"\n";
     output << "    exit 1\n";
     output << "fi\n\n";
     output << "commit_details=$(hum write \\\n";
@@ -353,11 +449,13 @@ bool writeGitFile(const GitFile& gitFile, std::string& error) {
     output << "fi\n\n";
     output << "branch=$(git -C \"$script_directory\" branch --show-current)\n";
     output << "if [ -z \"$branch\" ]; then\n";
-    output << "    hum style --foreground 214 \"Commit created in detached HEAD state; it was not pushed.\"\n";
+    output << "    hum style --foreground " << gitFile.informationColour
+           << " \"Commit created in detached HEAD state; it was not pushed.\"\n";
     output << "    exit 0\n";
     output << "fi\n\n";
     output << "if ! hum confirm --default no \"Push '$branch' now?\"; then\n";
-    output << "    hum style --foreground 214 \"Commit created locally and not pushed.\"\n";
+    output << "    hum style --foreground " << gitFile.informationColour
+           << " \"Commit created locally and not pushed.\"\n";
     output << "    exit 0\n";
     output << "fi\n\n";
     output << "if git -C \"$script_directory\" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1; then\n";
@@ -365,7 +463,8 @@ bool writeGitFile(const GitFile& gitFile, std::string& error) {
     output << "elif git -C \"$script_directory\" remote get-url origin >/dev/null 2>&1; then\n";
     output << "    git -C \"$script_directory\" push --set-upstream origin \"$branch\"\n";
     output << "else\n";
-    output << "    hum style --foreground 196 \"No upstream branch or 'origin' remote is configured.\"\n";
+    output << "    hum style --foreground " << gitFile.errorColour
+           << " \"No upstream branch or 'origin' remote is configured.\"\n";
     output << "    exit 1\n";
     output << "fi\n";
     output.close();
@@ -385,38 +484,42 @@ bool writeGitFile(const GitFile& gitFile, std::string& error) {
 WizardResult runWizard() {
     std::cout << "\n";
     showStyled(std::string(kName) + " v" + kVersion + " — Haiku command-line helper",
-               "#6f3a63", true);
+               randomColour(), true);
     std::cout << "\n";
 
     const auto projectName = prompt("Project name", "My Project");
     const auto version = prompt("Builder version", "1.0");
     const auto directory = selectProjectDirectory(projectName);
+    const Theme& theme = selectTheme();
 
     std::vector<Step> steps;
     if (confirm("Include an Update Code step (git pull)?")) {
-        steps.push_back({"Update Code", "Git Pull?", "#f2cc60", {"git pull"}});
+        steps.push_back({"Update Code", "Git Pull?", theme.updateCode, {"git pull"}});
     }
     if (confirm("Include a clean step?")) {
-        steps.push_back({"Make Clean", "Make Clean?", "#e8b76a", {prompt("Clean command", "make clean")}});
+        steps.push_back({"Make Clean", "Make Clean?", theme.clean,
+                         {prompt("Clean command", "make clean")}});
     }
     if (confirm("Include a build step?")) {
-        steps.push_back({"Make", "Make?", "#d98a4e", {prompt("Build command", "make")}});
+        steps.push_back({"Make", "Make?", theme.build, {prompt("Build command", "make")}});
     }
     if (confirm("Include a test step?")) {
-        steps.push_back({"Make Test", "Make Tests?", "#d98a3e", {prompt("Test command", "make test")}});
+        steps.push_back({"Make Test", "Make Tests?", theme.test,
+                         {prompt("Test command", "make test")}});
     }
     if (confirm("Include a run step?")) {
         const auto command = prompt("Run command", "./my-project");
-        steps.push_back({"Run / Test", "Run?", "#6f3a63", {command}});
+        steps.push_back({"Run / Test", "Run?", theme.run, {command}});
     }
     const fs::path output = steps.empty() ? fs::path{} : fs::path(prompt("Output build file", "build.sh"));
 
     std::optional<GitFile> gitFile;
     if (confirm("Create a Git commit-and-push script?", false)) {
-        gitFile = GitFile{projectName, prompt("Output Git script", "git.sh")};
+        gitFile = GitFile{projectName, prompt("Output Git script", "git.sh"),
+                          randomColour(), randomColour(), randomColour()};
     }
 
-    return {{projectName + " Builder v" + version, directory, output, steps}, gitFile};
+    return {{projectName + " Builder v" + version, randomColour(), directory, output, steps}, gitFile};
 }
 
 void printUsage(const char* executable) {
@@ -427,7 +530,8 @@ void printUsage(const char* executable) {
               << "  -h, --help       Show this help\n"
               << "  -v, --version    Show the Kizuku version\n\n"
               << "When Hum is available, Kizuku uses it for prompts, styling, confirmation,\n"
-              << "and project-directory selection. Plain terminal prompts are used otherwise.\n";
+              << "and project-directory selection. Plain terminal prompts are used otherwise.\n"
+              << "Built-in themes: Kizuku (default), Coast, and Sakura.\n";
 }
 
 }  // namespace
@@ -468,7 +572,7 @@ int main(int argc, char** argv) {
                 return 1;
             }
             std::cout << "\n";
-            showStyled("Created " + fs::absolute(result.buildFile.output).string(), "#e8b76a");
+            showStyled("Created " + fs::absolute(result.buildFile.output).string(), randomColour());
         }
 
         if (result.gitFile) {
@@ -476,7 +580,7 @@ int main(int argc, char** argv) {
                 std::cerr << "kizuku: " << error << "\n";
                 return 1;
             }
-            showStyled("Created " + fs::absolute(result.gitFile->output).string(), "#e8b76a");
+            showStyled("Created " + fs::absolute(result.gitFile->output).string(), randomColour());
         }
         return 0;
     } catch (const std::exception& exception) {
