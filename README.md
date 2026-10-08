@@ -42,8 +42,10 @@ more choices can be added without changing the step generator.
 ## Edit an existing script
 
 Choose **Edit an existing script** from Kizuku's opening menu. Kizuku can insert
-configured `hum confirm`, `hum choose`, `hum input`, `hum style`, `hum write`,
-or `hum spin` blocks into an existing script. The insertion wizard supports:
+configured `hum confirm`, `hum choose`, `hum input`, `hum file`, `hum style`,
+`hum write`, or `hum spin` blocks into an existing script. Generated Hum file
+pickers resolve the script's own directory and open there, so they continue to
+work when the project is moved. The insertion wizard supports:
 
 - immediately after the shebang;
 - before or after a selected line; or

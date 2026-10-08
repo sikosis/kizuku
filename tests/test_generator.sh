@@ -152,6 +152,17 @@ printf 'Edit an existing script\n%s/edit-before.sh\nHum Input\nanswer\nYour answ
 sh -n "$test_dir/edit-before.sh"
 test "$(sed -n '3p' "$test_dir/edit-before.sh")" = 'answer=$(hum input --placeholder "Your answer")'
 
+# A generated Hum file picker starts from the script/project directory rather
+# than whichever directory the user happens to launch the script from.
+printf '#!/bin/sh\n' > "$test_dir/edit-file-picker.sh"
+printf 'Edit an existing script\n%s/edit-file-picker.sh\nHum File Picker\nselected_directory\nDirectory\n\nEnd of script\ny\n' \
+    "$test_dir" | ./kizuku >/dev/null
+sh -n "$test_dir/edit-file-picker.sh"
+grep -Fq 'project_directory=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)' \
+    "$test_dir/edit-file-picker.sh"
+grep -Fq 'selected_directory=$(hum file --no-file --directory --header "Select a directory" "$project_directory")' \
+    "$test_dir/edit-file-picker.sh"
+
 version=$(tr -d '\r\n' < VERSION)
 test "$(./kizuku --version)" = "Kizuku v$version"
 ./kizuku --help | grep -Fq "Kizuku v$version"

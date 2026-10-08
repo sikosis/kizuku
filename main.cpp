@@ -22,7 +22,7 @@ namespace fs = std::filesystem;
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.14"
+#define KIZUKU_VERSION "0.15"
 #endif
 
 constexpr const char* kReset = "\033[0m";
@@ -449,6 +449,27 @@ std::vector<std::string> buildHumSnippet(const std::string& type) {
         const auto placeholder = prompt("Input placeholder", "Type a value");
         return {variable + "=$(hum input --placeholder " + shellDoubleQuoted(placeholder) + ")"};
     }
+    if (type == "Hum File Picker") {
+        const auto variable = promptShellVariable("selected_path");
+        const auto selectionType = selectOption("What can be selected?",
+            {"File", "Directory", "File or directory"}, "File");
+        std::string options;
+        std::string defaultHeader;
+        if (selectionType == "Directory") {
+            options = "--no-file --directory";
+            defaultHeader = "Select a directory";
+        } else if (selectionType == "File or directory") {
+            options = "--file --directory";
+            defaultHeader = "Select a file or directory";
+        } else {
+            options = "--file --no-directory";
+            defaultHeader = "Select a file";
+        }
+        const auto header = prompt("Picker heading", defaultHeader);
+        return {"project_directory=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)",
+                variable + "=$(hum file " + options + " --header " + shellDoubleQuoted(header) +
+                    " \"$project_directory\")"};
+    }
     if (type == "Hum Style") {
         const auto text = prompt("Text to display", "Hello from Hum");
         const auto colour = prompt("Foreground colour", randomColour());
@@ -469,6 +490,8 @@ std::vector<std::string> buildHumSnippet(const std::string& type) {
     const auto command = prompt("Command to run", "make");
     return {"hum spin --title " + shellDoubleQuoted(title) + " -- " + command};
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
+
 
 bool parseLineNumber(const std::string& value, std::size_t maximum, std::size_t& result) {
     try {
@@ -529,7 +552,7 @@ bool rewriteScript(const fs::path& path, const std::vector<std::string>& lines, 
 bool editExistingScript(std::string& error) {
     fs::path path;
     if (gUseHum) {
-        const fs::path start = fs::exists("/boot/home") ? fs::path("/boot/home") : fs::current_path();
+        const fs::path start = fs::current_path();
         if (const auto selection = captureHum({"file", "--file", "--no-directory",
                                                "--header", "Select a script to edit",
                                                start.string()})) {
@@ -563,7 +586,7 @@ bool editExistingScript(std::string& error) {
     }
 
     const auto type = selectOption("Block to add",
-        {"Hum Confirm", "Hum Choose", "Hum Input", "Hum Style", "Hum Write", "Hum Spin"},
+        {"Hum Confirm", "Hum Choose", "Hum Input", "Hum File Picker", "Hum Style", "Hum Write", "Hum Spin"},
         "Hum Confirm");
     const auto snippet = buildHumSnippet(type);
 
@@ -703,7 +726,7 @@ std::size_t replaceThemeColours(std::string& line, const Theme& theme,
 bool restyleExistingScript(std::string& error) {
     fs::path path;
     if (gUseHum) {
-        const fs::path start = fs::exists("/boot/home") ? fs::path("/boot/home") : fs::current_path();
+        const fs::path start = fs::current_path();
         if (const auto selection = captureHum({"file", "--file", "--no-directory",
                                                "--header", "Select a script to restyle",
                                                start.string()})) {
