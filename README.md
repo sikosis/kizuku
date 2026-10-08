@@ -45,7 +45,10 @@ Choose **Edit an existing script** from Kizuku's opening menu. Kizuku can insert
 configured `hum confirm`, `hum choose`, `hum input`, `hum file`, `hum style`,
 `hum write`, or `hum spin` blocks into an existing script. Generated Hum file
 pickers resolve the script's own directory and open there, so they continue to
-work when the project is moved. The insertion wizard supports:
+work when the project is moved. In directory pickers, the right-arrow key opens
+the highlighted folder and Enter selects it. Hum input defaults are displayed
+as placeholders, so they do not need to be deleted before typing. The insertion
+wizard supports:
 
 - immediately after the shebang;
 - before or after a selected line; or

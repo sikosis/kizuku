@@ -160,7 +160,7 @@ printf 'Edit an existing script\n%s/edit-file-picker.sh\nHum File Picker\nselect
 sh -n "$test_dir/edit-file-picker.sh"
 grep -Fq 'project_directory=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)' \
     "$test_dir/edit-file-picker.sh"
-grep -Fq 'selected_directory=$(hum file --no-file --directory --header "Select a directory" "$project_directory")' \
+grep -Fq 'selected_directory=$(hum file --no-file --directory --header "Select a directory — Right arrow opens folders; Enter selects" "$project_directory")' \
     "$test_dir/edit-file-picker.sh"
 
 version=$(tr -d '\r\n' < VERSION)

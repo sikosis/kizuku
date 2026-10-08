@@ -22,7 +22,7 @@ namespace fs = std::filesystem;
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.15"
+#define KIZUKU_VERSION "0.16"
 #endif
 
 constexpr const char* kReset = "\033[0m";
@@ -228,7 +228,7 @@ std::string prompt(const std::string& label, const std::string& fallback = {}) {
     if (gUseHum) {
         std::vector<std::string> arguments = {"input", "--prompt", label + ": ", "--no-show-help"};
         if (!fallback.empty()) {
-            arguments.insert(arguments.end(), {"--value", fallback});
+            arguments.insert(arguments.end(), {"--placeholder", fallback});
         }
         if (const auto answer = captureHum(arguments)) {
             return answer->empty() ? fallback : *answer;
@@ -321,7 +321,7 @@ std::string selectProjectDirectory(const std::string& projectName) {
     if (gUseHum) {
         const fs::path start = fs::exists("/boot/home") ? fs::path("/boot/home") : fs::current_path();
         if (const auto selection = captureHum({"file", "--no-file", "--directory",
-                                               "--header", "Select the project directory",
+                                               "--header", "Project directory — Right arrow opens folders; Enter selects",
                                                start.string()})) {
             if (!selection->empty()) {
                 return *selection;
@@ -457,10 +457,10 @@ std::vector<std::string> buildHumSnippet(const std::string& type) {
         std::string defaultHeader;
         if (selectionType == "Directory") {
             options = "--no-file --directory";
-            defaultHeader = "Select a directory";
+            defaultHeader = "Select a directory — Right arrow opens folders; Enter selects";
         } else if (selectionType == "File or directory") {
             options = "--file --directory";
-            defaultHeader = "Select a file or directory";
+            defaultHeader = "Select a file or directory — Right arrow opens folders; Enter selects";
         } else {
             options = "--file --no-directory";
             defaultHeader = "Select a file";
