@@ -22,7 +22,7 @@ namespace fs = std::filesystem;
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.13"
+#define KIZUKU_VERSION "0.14"
 #endif
 
 constexpr const char* kReset = "\033[0m";
@@ -996,7 +996,8 @@ void printUsage(const char* executable) {
               << "Interactive workflows:\n"
               << "  Create new scripts       Generate themed build and Git helpers\n"
               << "  Edit an existing script  Insert configured Hum blocks by location\n"
-              << "  Restyle a script         Replace Hum hex colours with a selected theme\n\n"
+              << "  Restyle a script         Replace Hum hex colours with a selected theme\n"
+              << "  Quit                     Exit without making changes\n\n"
               << "When Hum is available, Kizuku uses it for prompts, styling, confirmation,\n"
               << "and project-directory selection. Plain terminal prompts are used otherwise.\n"
               << "Built-in themes: Kizuku (default), Coast, Sakura, Forest, Sunset, Lavender, and Slate.\n";
@@ -1027,8 +1028,12 @@ int main(int argc, char** argv) {
                        randomColour(), true);
             std::cout << "\n";
             const auto action = selectOption("What would you like to do?",
-                {"Create new scripts", "Edit an existing script", "Restyle an existing script"},
+                {"Create new scripts", "Edit an existing script", "Restyle an existing script", "Quit"},
                 "Create new scripts");
+            if (action == "Quit") {
+                std::cout << "Goodbye.\n";
+                return 0;
+            }
             if (action == "Edit an existing script") {
                 std::string editError;
                 if (!editExistingScript(editError)) {

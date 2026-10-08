@@ -156,5 +156,7 @@ version=$(tr -d '\r\n' < VERSION)
 test "$(./kizuku --version)" = "Kizuku v$version"
 ./kizuku --help | grep -Fq "Kizuku v$version"
 ./kizuku --help | grep -Fq 'Forest, Sunset, Lavender, and Slate'
+./kizuku --help | grep -Fq 'Quit'
+printf 'Quit\n' | ./kizuku >/dev/null
 
 echo "generator test passed"
