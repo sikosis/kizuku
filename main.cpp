@@ -22,7 +22,7 @@ namespace fs = std::filesystem;
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.1"
+#define KIZUKU_VERSION "0.13"
 #endif
 
 constexpr const char* kReset = "\033[0m";
