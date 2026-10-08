@@ -8,8 +8,10 @@
 #include <iostream>
 #include <optional>
 #include <random>
+#include <sstream>
 #include <string>
 #include <system_error>
+#include <unordered_map>
 #include <vector>
 
 #include <sys/stat.h>
@@ -50,7 +52,7 @@ struct Theme {
 
 // Built-in palettes are data-only so more themes can be added without changing
 // how build steps are assembled.
-constexpr std::array<Theme, 3> kThemes = {{
+constexpr std::array<Theme, 7> kThemes = {{
     {
         "Kizuku",
         "#f2cc60",
@@ -74,6 +76,38 @@ constexpr std::array<Theme, 3> kThemes = {{
         "#fb6f92",
         "#c77dff",
         "#7b2cbf",
+    },
+    {
+        "Forest",
+        "#a7c957",
+        "#6a994e",
+        "#386641",
+        "#588157",
+        "#344e41",
+    },
+    {
+        "Sunset",
+        "#ffb703",
+        "#fb8500",
+        "#f77f00",
+        "#d62828",
+        "#9d4edd",
+    },
+    {
+        "Lavender",
+        "#e0aaff",
+        "#c77dff",
+        "#9d4edd",
+        "#7b2cbf",
+        "#5a189a",
+    },
+    {
+        "Slate",
+        "#cad2c5",
+        "#84a98c",
+        "#52796f",
+        "#354f52",
+        "#2f3e46",
     },
 }};
 
@@ -106,12 +140,16 @@ std::string trim(const std::string& value) {
     const auto last = value.find_last_not_of(" \t\r\n");
     return value.substr(first, last - first + 1);
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
+
 
 std::string randomColour() {
     static std::mt19937 generator(std::random_device{}());
     static std::uniform_int_distribution<int> distribution(1, 255);
     return std::to_string(distribution(generator));
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
+
 
 std::string shellSingleQuoted(const std::string& value);
 
@@ -128,6 +166,8 @@ std::string shellDoubleQuoted(const std::string& value) {
     escaped.push_back('"');
     return escaped;
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
+
 
 bool executableInPath(const std::string& executable) {
     const char* pathValue = std::getenv("PATH");
@@ -151,6 +191,8 @@ bool executableInPath(const std::string& executable) {
     }
     return false;
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
+
 
 std::string humCommand(const std::vector<std::string>& arguments) {
     std::string command = "hum";
@@ -159,6 +201,8 @@ std::string humCommand(const std::vector<std::string>& arguments) {
     }
     return command;
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
+
 
 std::optional<std::string> captureHum(const std::vector<std::string>& arguments) {
     FILE* pipe = ::popen(humCommand(arguments).c_str(), "r");
@@ -177,6 +221,8 @@ std::optional<std::string> captureHum(const std::vector<std::string>& arguments)
     }
     return trim(output);
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
+
 
 std::string prompt(const std::string& label, const std::string& fallback = {}) {
     if (gUseHum) {
@@ -202,6 +248,8 @@ std::string prompt(const std::string& label, const std::string& fallback = {}) {
     answer = trim(answer);
     return answer.empty() ? fallback : answer;
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
+
 
 bool confirm(const std::string& label, bool fallback = true) {
     if (gUseHum) {
@@ -229,6 +277,8 @@ bool confirm(const std::string& label, bool fallback = true) {
         std::cout << "Please answer y or n.\n";
     }
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
+
 
 void showStyled(const std::string& text, const std::string& colour, bool bordered = false) {
     if (gUseHum) {
@@ -243,6 +293,8 @@ void showStyled(const std::string& text, const std::string& colour, bool bordere
     }
     std::cout << (bordered ? kPurple : kAmber) << kBold << text << kReset << "\n";
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
+
 
 std::string projectSlug(const std::string& projectName) {
     std::string slug;
@@ -261,6 +313,8 @@ std::string projectSlug(const std::string& projectName) {
     }
     return slug.empty() ? "project" : slug;
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
+
 
 std::string selectProjectDirectory(const std::string& projectName) {
     const std::string suggested = "/boot/home/" + projectSlug(projectName) + "/";
@@ -276,43 +330,451 @@ std::string selectProjectDirectory(const std::string& projectName) {
     }
     return prompt("Project directory", suggested);
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+std::string selectOption(const std::string& header, const std::vector<std::string>& options,
+                         const std::string& fallback);
 
 const Theme& selectTheme() {
+    std::vector<std::string> names;
+    for (const auto& theme : kThemes) {
+        names.push_back(theme.name);
+    }
+    const auto selection = selectOption("Choose a colour theme", names, kThemes.front().name);
+    for (const auto& theme : kThemes) {
+        if (selection == theme.name) {
+            return theme;
+        }
+    }
+    return kThemes.front();
+}
+
+std::string selectOption(const std::string& header, const std::vector<std::string>& options,
+                         const std::string& fallback) {
     if (gUseHum) {
         std::vector<std::string> arguments = {
-            "choose", "--header", "Choose a colour theme", "--selected", kThemes.front().name,
+            "choose", "--header", header, "--selected", fallback,
         };
-        for (const auto& theme : kThemes) {
-            arguments.push_back(theme.name);
-        }
+        arguments.insert(arguments.end(), options.begin(), options.end());
         if (const auto selection = captureHum(arguments)) {
-            for (const auto& theme : kThemes) {
-                if (*selection == theme.name) {
-                    return theme;
+            for (const auto& option : options) {
+                if (*selection == option) {
+                    return option;
                 }
             }
         }
     }
 
     while (true) {
-        const auto selection = prompt("Theme (Kizuku, Coast, Sakura)", kThemes.front().name);
-        std::string normalised;
-        normalised.reserve(selection.size());
-        for (const unsigned char character : selection) {
-            normalised.push_back(static_cast<char>(std::tolower(character)));
-        }
-        for (const auto& theme : kThemes) {
-            std::string themeName(theme.name);
-            for (char& character : themeName) {
-                character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+        std::string choices;
+        for (std::size_t index = 0; index < options.size(); ++index) {
+            if (index != 0) {
+                choices += ", ";
             }
-            if (normalised == themeName) {
-                return theme;
+            choices += options[index];
+        }
+        const auto selection = prompt(header + " (" + choices + ")", fallback);
+        for (const auto& option : options) {
+            if (selection == option) {
+                return option;
             }
         }
-        std::cout << "Choose Kizuku, Coast, or Sakura.\n";
+        std::cout << "Choose one of: " << choices << ".\n";
     }
 }
+
+bool validShellVariable(const std::string& value) {
+    if (value.empty() || !(std::isalpha(static_cast<unsigned char>(value.front())) ||
+                           value.front() == '_')) {
+        return false;
+    }
+    for (const unsigned char character : value) {
+        if (!(std::isalnum(character) || character == '_')) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::string promptShellVariable(const std::string& fallback) {
+    while (true) {
+        const auto value = prompt("Shell variable name", fallback);
+        if (validShellVariable(value)) {
+            return value;
+        }
+        std::cout << "Use letters, numbers, and underscores; the first character cannot be a number.\n";
+    }
+}
+
+std::vector<std::string> commaSeparated(const std::string& value) {
+    std::vector<std::string> items;
+    std::size_t start = 0;
+    while (start <= value.size()) {
+        const auto end = value.find(',', start);
+        const auto item = trim(value.substr(start, end == std::string::npos ? end : end - start));
+        if (!item.empty()) {
+            items.push_back(item);
+        }
+        if (end == std::string::npos) {
+            break;
+        }
+        start = end + 1;
+    }
+    return items;
+}
+
+std::vector<std::string> buildHumSnippet(const std::string& type) {
+    if (type == "Hum Confirm") {
+        const auto question = prompt("Confirmation question", "Continue?");
+        const auto command = prompt("Command when confirmed", "echo \"Confirmed\"");
+        return {"if hum confirm " + shellDoubleQuoted(question) + "; then",
+                "    " + command,
+                "fi"};
+    }
+    if (type == "Hum Choose") {
+        const auto variable = promptShellVariable("choice");
+        auto items = commaSeparated(prompt("Comma-separated choices", "Red, Green, Blue"));
+        if (items.empty()) {
+            items = {"Red", "Green", "Blue"};
+        }
+        std::string line = variable + "=$(hum choose";
+        for (const auto& item : items) {
+            line += " " + shellSingleQuoted(item);
+        }
+        line += ")";
+        return {line};
+    }
+    if (type == "Hum Input") {
+        const auto variable = promptShellVariable("value");
+        const auto placeholder = prompt("Input placeholder", "Type a value");
+        return {variable + "=$(hum input --placeholder " + shellDoubleQuoted(placeholder) + ")"};
+    }
+    if (type == "Hum Style") {
+        const auto text = prompt("Text to display", "Hello from Hum");
+        const auto colour = prompt("Foreground colour", randomColour());
+        const bool bold = confirm("Use bold text?");
+        return {"hum style --foreground " + shellSingleQuoted(colour) +
+                (bold ? " --bold " : " ") + shellDoubleQuoted(text)};
+    }
+    if (type == "Hum Write") {
+        const auto variable = promptShellVariable("details");
+        const auto header = prompt("Editor heading", "Enter details");
+        const auto placeholder = prompt("Editor placeholder", "Type here");
+        return {variable + "=$(hum write \\",
+                "    --header " + shellDoubleQuoted(header) + " \\",
+                "    --placeholder " + shellDoubleQuoted(placeholder) + ")"};
+    }
+
+    const auto title = prompt("Spinner title", "Working...");
+    const auto command = prompt("Command to run", "make");
+    return {"hum spin --title " + shellDoubleQuoted(title) + " -- " + command};
+}
+
+bool parseLineNumber(const std::string& value, std::size_t maximum, std::size_t& result) {
+    try {
+        std::size_t consumed = 0;
+        const auto number = std::stoul(value, &consumed);
+        if (consumed != value.size() || number < 1 || number > maximum) {
+            return false;
+        }
+        result = number;
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+bool rewriteScript(const fs::path& path, const std::vector<std::string>& lines, std::string& error) {
+    struct stat details {};
+    if (::stat(path.c_str(), &details) != 0) {
+        error = "cannot read permissions for " + path.string();
+        return false;
+    }
+
+    fs::path temporary = path;
+    temporary += ".kizuku.tmp." + std::to_string(::getpid());
+    std::ofstream output(temporary, std::ios::trunc);
+    if (!output) {
+        error = "cannot create temporary file beside " + path.string();
+        return false;
+    }
+    for (const auto& line : lines) {
+        output << line << '\n';
+    }
+    output.close();
+    if (!output) {
+        std::error_code ignored;
+        fs::remove(temporary, ignored);
+        error = "failed while writing the updated script";
+        return false;
+    }
+    if (::chmod(temporary.c_str(), details.st_mode & 07777) != 0) {
+        std::error_code ignored;
+        fs::remove(temporary, ignored);
+        error = "could not preserve the script permissions";
+        return false;
+    }
+
+    std::error_code renameError;
+    fs::rename(temporary, path, renameError);
+    if (renameError) {
+        std::error_code ignored;
+        fs::remove(temporary, ignored);
+        error = "could not replace the script: " + renameError.message();
+        return false;
+    }
+    return true;
+}
+
+bool editExistingScript(std::string& error) {
+    fs::path path;
+    if (gUseHum) {
+        const fs::path start = fs::exists("/boot/home") ? fs::path("/boot/home") : fs::current_path();
+        if (const auto selection = captureHum({"file", "--file", "--no-directory",
+                                               "--header", "Select a script to edit",
+                                               start.string()})) {
+            path = *selection;
+        }
+    }
+    if (path.empty()) {
+        path = prompt("Script to edit");
+    }
+    if (!fs::is_regular_file(path)) {
+        error = path.string() + " is not a regular file";
+        return false;
+    }
+
+    std::ifstream input(path);
+    if (!input) {
+        error = "cannot open " + path.string();
+        return false;
+    }
+    std::vector<std::string> lines;
+    std::string line;
+    while (std::getline(input, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        lines.push_back(line);
+    }
+    if (!input.eof()) {
+        error = "failed while reading " + path.string();
+        return false;
+    }
+
+    const auto type = selectOption("Block to add",
+        {"Hum Confirm", "Hum Choose", "Hum Input", "Hum Style", "Hum Write", "Hum Spin"},
+        "Hum Confirm");
+    const auto snippet = buildHumSnippet(type);
+
+    showStyled("Block preview", randomColour());
+    for (const auto& snippetLine : snippet) {
+        std::cout << snippetLine << '\n';
+    }
+    std::cout << '\n';
+
+    const auto placement = selectOption("Where should it be inserted?",
+        {"After shebang", "Before a line", "After a line", "End of script"},
+        "End of script");
+    std::size_t insertion = lines.size();
+    if (placement == "After shebang") {
+        insertion = !lines.empty() && lines.front().rfind("#!", 0) == 0 ? 1 : 0;
+    } else if (placement == "Before a line" || placement == "After a line") {
+        if (lines.empty()) {
+            error = "cannot select a line in an empty script";
+            return false;
+        }
+        showStyled("Current script", randomColour());
+        for (std::size_t index = 0; index < lines.size(); ++index) {
+            std::cout << index + 1 << " | " << lines[index] << '\n';
+        }
+        std::size_t lineNumber = 0;
+        while (!parseLineNumber(prompt("Line number"), lines.size(), lineNumber)) {
+            std::cout << "Enter a line number from 1 to " << lines.size() << ".\n";
+        }
+        insertion = placement == "Before a line" ? lineNumber - 1 : lineNumber;
+    }
+
+    if (!confirm("Insert this block into " + path.string() + "?")) {
+        error = "edit cancelled";
+        return false;
+    }
+
+    std::vector<std::string> addition;
+    if (insertion > 0 && !lines[insertion - 1].empty()) {
+        addition.emplace_back();
+    }
+    addition.insert(addition.end(), snippet.begin(), snippet.end());
+    if (insertion < lines.size() && !lines[insertion].empty()) {
+        addition.emplace_back();
+    }
+    lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(insertion),
+                 addition.begin(), addition.end());
+    return rewriteScript(path, lines, error);
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+const char* themedRoleColour(const std::string& line, const Theme& theme) {
+    if (line.find("Update Code") != std::string::npos) {
+        return theme.updateCode;
+    }
+    if (line.find("Make Clean") != std::string::npos) {
+        return theme.clean;
+    }
+    if (line.find("Make Test") != std::string::npos) {
+        return theme.test;
+    }
+    if (line.find("Run / Test") != std::string::npos) {
+        return theme.run;
+    }
+    if (line.find("==> Step") != std::string::npos && line.find("Make") != std::string::npos) {
+        return theme.build;
+    }
+    return nullptr;
+}
+
+std::size_t replaceThemeColours(std::string& line, const Theme& theme,
+                                std::unordered_map<std::string, std::string>& colourMap,
+                                std::size_t& nextColour) {
+    const std::array<const char*, 5> palette = {
+        theme.updateCode, theme.clean, theme.build, theme.test, theme.run,
+    };
+    std::size_t replacements = 0;
+    std::size_t searchFrom = 0;
+    while (true) {
+        const auto option = line.find("--foreground", searchFrom);
+        if (option == std::string::npos) {
+            break;
+        }
+        std::size_t tokenStart = option + std::string("--foreground").size();
+        while (tokenStart < line.size() && std::isspace(static_cast<unsigned char>(line[tokenStart]))) {
+            ++tokenStart;
+        }
+        if (tokenStart >= line.size()) {
+            break;
+        }
+
+        const char quote = line[tokenStart] == '\'' || line[tokenStart] == '"' ? line[tokenStart] : '\0';
+        const std::size_t colourStart = tokenStart + (quote == '\0' ? 0 : 1);
+        if (colourStart + 7 > line.size() || line[colourStart] != '#') {
+            searchFrom = colourStart;
+            continue;
+        }
+        bool valid = true;
+        for (std::size_t index = colourStart + 1; index < colourStart + 7; ++index) {
+            if (!std::isxdigit(static_cast<unsigned char>(line[index]))) {
+                valid = false;
+                break;
+            }
+        }
+        const std::size_t colourEnd = colourStart + 7;
+        if (!valid || (quote != '\0' && (colourEnd >= line.size() || line[colourEnd] != quote))) {
+            searchFrom = colourStart + 1;
+            continue;
+        }
+
+        std::string oldColour = line.substr(colourStart, 7);
+        for (char& character : oldColour) {
+            character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+        }
+        std::string newColour;
+        if (const char* roleColour = themedRoleColour(line, theme)) {
+            newColour = roleColour;
+        } else {
+            const auto existing = colourMap.find(oldColour);
+            if (existing != colourMap.end()) {
+                newColour = existing->second;
+            } else {
+                newColour = palette[nextColour % palette.size()];
+                colourMap.emplace(oldColour, newColour);
+                ++nextColour;
+            }
+        }
+
+        const std::size_t tokenEnd = colourEnd + (quote == '\0' ? 0 : 1);
+        const std::string replacement = "\"" + newColour + "\"";
+        line.replace(tokenStart, tokenEnd - tokenStart, replacement);
+        searchFrom = tokenStart + replacement.size();
+        ++replacements;
+    }
+    return replacements;
+}
+
+bool restyleExistingScript(std::string& error) {
+    fs::path path;
+    if (gUseHum) {
+        const fs::path start = fs::exists("/boot/home") ? fs::path("/boot/home") : fs::current_path();
+        if (const auto selection = captureHum({"file", "--file", "--no-directory",
+                                               "--header", "Select a script to restyle",
+                                               start.string()})) {
+            path = *selection;
+        }
+    }
+    if (path.empty()) {
+        path = prompt("Script to restyle");
+    }
+    if (!fs::is_regular_file(path)) {
+        error = path.string() + " is not a regular file";
+        return false;
+    }
+
+    std::ifstream input(path);
+    if (!input) {
+        error = "cannot open " + path.string();
+        return false;
+    }
+    std::vector<std::string> lines;
+    std::string line;
+    while (std::getline(input, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        lines.push_back(line);
+    }
+    if (!input.eof()) {
+        error = "failed while reading " + path.string();
+        return false;
+    }
+
+    const Theme& theme = selectTheme();
+    std::unordered_map<std::string, std::string> colourMap;
+    std::size_t nextColour = 0;
+    std::size_t replacementCount = 0;
+    bool insideHumStyle = false;
+    for (auto& scriptLine : lines) {
+        if (scriptLine.find("hum style") != std::string::npos) {
+            insideHumStyle = true;
+        }
+        if (insideHumStyle) {
+            replacementCount += replaceThemeColours(scriptLine, theme, colourMap, nextColour);
+        }
+        const auto lastCharacter = scriptLine.find_last_not_of(" \t");
+        const bool continues = lastCharacter != std::string::npos && scriptLine[lastCharacter] == '\\';
+        if (insideHumStyle && !continues) {
+            insideHumStyle = false;
+        }
+    }
+    if (replacementCount == 0) {
+        error = "no hexadecimal Hum foreground colours were found in " + path.string();
+        return false;
+    }
+
+    showStyled("Theme: " + std::string(theme.name), randomColour());
+    std::cout << "  Update Code  " << theme.updateCode << '\n'
+              << "  Make Clean   " << theme.clean << '\n'
+              << "  Make         " << theme.build << '\n'
+              << "  Make Test    " << theme.test << '\n'
+              << "  Run / Test   " << theme.run << '\n';
+    showStyled(std::to_string(replacementCount) + " colour replacement(s) found",
+               randomColour());
+    if (!confirm("Apply this theme to " + path.string() + "?")) {
+        error = "edit cancelled";
+        return false;
+    }
+    return rewriteScript(path, lines, error);
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
 
 std::string shellSingleQuoted(const std::string& value) {
     std::string escaped = "'";
@@ -326,6 +788,7 @@ std::string shellSingleQuoted(const std::string& value) {
     escaped.push_back('\'');
     return escaped;
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
 
 void writeStep(std::ostream& output, const Step& step, std::size_t number) {
     const std::string colour = !step.colour.empty() && step.colour.front() == '#'
@@ -339,6 +802,7 @@ void writeStep(std::ostream& output, const Step& step, std::size_t number) {
     }
     output << "fi\n\n";
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
 
 bool writeBuildFile(const BuildFile& buildFile, std::string& error) {
     if (buildFile.output.has_parent_path()) {
@@ -386,6 +850,7 @@ bool writeBuildFile(const BuildFile& buildFile, std::string& error) {
     }
     return true;
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
 
 bool writeGitFile(const GitFile& gitFile, std::string& error) {
     if (gitFile.output.has_parent_path()) {
@@ -480,13 +945,10 @@ bool writeGitFile(const GitFile& gitFile, std::string& error) {
     }
     return true;
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
+
 
 WizardResult runWizard() {
-    std::cout << "\n";
-    showStyled(std::string(kName) + " v" + kVersion + " — Haiku command-line helper",
-               randomColour(), true);
-    std::cout << "\n";
-
     const auto projectName = prompt("Project name", "My Project");
     const auto version = prompt("Builder version", "1.0");
     const auto directory = selectProjectDirectory(projectName);
@@ -521,6 +983,8 @@ WizardResult runWizard() {
 
     return {{projectName + " Builder v" + version, randomColour(), directory, output, steps}, gitFile};
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
+
 
 void printUsage(const char* executable) {
     std::cout << kName << " v" << kVersion << "\n"
@@ -529,12 +993,19 @@ void printUsage(const char* executable) {
               << "Options:\n"
               << "  -h, --help       Show this help\n"
               << "  -v, --version    Show the Kizuku version\n\n"
+              << "Interactive workflows:\n"
+              << "  Create new scripts       Generate themed build and Git helpers\n"
+              << "  Edit an existing script  Insert configured Hum blocks by location\n"
+              << "  Restyle a script         Replace Hum hex colours with a selected theme\n\n"
               << "When Hum is available, Kizuku uses it for prompts, styling, confirmation,\n"
               << "and project-directory selection. Plain terminal prompts are used otherwise.\n"
-              << "Built-in themes: Kizuku (default), Coast, and Sakura.\n";
+              << "Built-in themes: Kizuku (default), Coast, Sakura, Forest, Sunset, Lavender, and Slate.\n";
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
+
 
 }  // namespace
+
 
 int main(int argc, char** argv) {
     try {
@@ -551,6 +1022,39 @@ int main(int argc, char** argv) {
             printUsage(argv[0]);
             return 2;
         } else {
+            std::cout << "\n";
+            showStyled(std::string(kName) + " v" + kVersion + " — Haiku command-line helper",
+                       randomColour(), true);
+            std::cout << "\n";
+            const auto action = selectOption("What would you like to do?",
+                {"Create new scripts", "Edit an existing script", "Restyle an existing script"},
+                "Create new scripts");
+            if (action == "Edit an existing script") {
+                std::string editError;
+                if (!editExistingScript(editError)) {
+                    if (editError != "edit cancelled") {
+                        std::cerr << "kizuku: " << editError << "\n";
+                        return 1;
+                    }
+                    std::cout << "No changes made.\n";
+                    return 0;
+                }
+                showStyled("Script updated successfully", randomColour());
+                return 0;
+            }
+            if (action == "Restyle an existing script") {
+                std::string restyleError;
+                if (!restyleExistingScript(restyleError)) {
+                    if (restyleError != "edit cancelled") {
+                        std::cerr << "kizuku: " << restyleError << "\n";
+                        return 1;
+                    }
+                    std::cout << "No changes made.\n";
+                    return 0;
+                }
+                showStyled("Script theme updated successfully", randomColour());
+                return 0;
+            }
             result = runWizard();
         }
 
@@ -588,3 +1092,4 @@ int main(int argc, char** argv) {
         return 1;
     }
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
