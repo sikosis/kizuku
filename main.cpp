@@ -1031,7 +1031,7 @@ int main(int argc, char** argv) {
                 {"Create new scripts", "Edit an existing script", "Restyle an existing script", "Quit"},
                 "Create new scripts");
             if (action == "Quit") {
-                std::cout << "Goodbye.\n";
+                std::cout << "Sayonara.\n";
                 return 0;
             }
             if (action == "Edit an existing script") {
