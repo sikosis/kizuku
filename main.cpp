@@ -22,7 +22,7 @@ namespace fs = std::filesystem;
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.16"
+#define KIZUKU_VERSION "0.17"
 #endif
 
 constexpr const char* kReset = "\033[0m";
@@ -52,7 +52,7 @@ struct Theme {
 
 // Built-in palettes are data-only so more themes can be added without changing
 // how build steps are assembled.
-constexpr std::array<Theme, 7> kThemes = {{
+constexpr std::array<Theme, 12> kThemes = {{
     {
         "Kizuku",
         "#f2cc60",
@@ -108,6 +108,46 @@ constexpr std::array<Theme, 7> kThemes = {{
         "#52796f",
         "#354f52",
         "#2f3e46",
+    },
+    {
+        "Desert",
+        "#e9c46a",
+        "#f4a261",
+        "#e76f51",
+        "#bc6c25",
+        "#6f4e37",
+    },
+    {
+        "Neon",
+        "#39ff14",
+        "#00f5d4",
+        "#00bbf9",
+        "#9b5de5",
+        "#f15bb5",
+    },
+    {
+        "Rosewood",
+        "#ffcad4",
+        "#f4acb7",
+        "#9d8189",
+        "#7d4e57",
+        "#5c374c",
+    },
+    {
+        "Arctic",
+        "#caf0f8",
+        "#90e0ef",
+        "#48cae4",
+        "#0077b6",
+        "#023e8a",
+    },
+    {
+        "Citrus",
+        "#f9c74f",
+        "#90be6d",
+        "#43aa8b",
+        "#577590",
+        "#f94144",
     },
 }};
 
@@ -1023,7 +1063,8 @@ void printUsage(const char* executable) {
               << "  Quit                     Exit without making changes\n\n"
               << "When Hum is available, Kizuku uses it for prompts, styling, confirmation,\n"
               << "and project-directory selection. Plain terminal prompts are used otherwise.\n"
-              << "Built-in themes: Kizuku (default), Coast, Sakura, Forest, Sunset, Lavender, and Slate.\n";
+              << "Built-in themes: Kizuku (default), Coast, Sakura, Forest, Sunset, Lavender, Slate,\n"
+              << "Desert, Neon, Rosewood, Arctic, and Citrus.\n";
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 

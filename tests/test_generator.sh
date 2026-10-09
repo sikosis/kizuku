@@ -113,6 +113,24 @@ grep -Fq -- '--foreground "#c77dff"' "$test_dir/sakura.sh"
 grep -Fq -- '--foreground "#7b2cbf"' "$test_dir/sakura.sh"
 bash -n "$test_dir/sakura.sh"
 
+check_added_theme() {
+    theme_name=$1
+    file_name=$2
+    shift 2
+    printf '\n%s App\n1.0\n\n%s\ny\ny\n\ny\n\ny\n\ny\n\n%s/%s.sh\nn\n' \
+        "$theme_name" "$theme_name" "$test_dir" "$file_name" | ./kizuku >/dev/null
+    for colour in "$@"; do
+        grep -Fq -- "--foreground \"$colour\"" "$test_dir/$file_name.sh"
+    done
+    bash -n "$test_dir/$file_name.sh"
+}
+
+check_added_theme Desert desert '#e9c46a' '#f4a261' '#e76f51' '#bc6c25' '#6f4e37'
+check_added_theme Neon neon '#39ff14' '#00f5d4' '#00bbf9' '#9b5de5' '#f15bb5'
+check_added_theme Rosewood rosewood '#ffcad4' '#f4acb7' '#9d8189' '#7d4e57' '#5c374c'
+check_added_theme Arctic arctic '#caf0f8' '#90e0ef' '#48cae4' '#0077b6' '#023e8a'
+check_added_theme Citrus citrus '#f9c74f' '#90be6d' '#43aa8b' '#577590' '#f94144'
+
 # Generate only the standalone Git helper.
 printf '\nGit Demo\n1.0\n/boot/home/git-demo/\n\nn\nn\nn\nn\nn\ny\n%s/git.sh\n' \
     "$test_dir" | ./kizuku >/dev/null
@@ -166,7 +184,7 @@ grep -Fq 'selected_directory=$(hum file --no-file --directory --header "Select a
 version=$(tr -d '\r\n' < VERSION)
 test "$(./kizuku --version)" = "Kizuku v$version"
 ./kizuku --help | grep -Fq "Kizuku v$version"
-./kizuku --help | grep -Fq 'Forest, Sunset, Lavender, and Slate'
+./kizuku --help | grep -Fq 'Desert, Neon, Rosewood, Arctic, and Citrus'
 ./kizuku --help | grep -Fq 'Quit'
 printf 'Quit\n' | ./kizuku >/dev/null
 
