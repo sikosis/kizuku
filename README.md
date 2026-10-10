@@ -24,7 +24,7 @@ update-code, clean, build, test, and run commands to include. When `hum` is in
 commands. Without `hum`, Kizuku falls back to ordinary terminal prompts. The
 default project directory is derived from the project name under `/boot/home/`.
 Each generated project receives a numeric title colour selected from the full
-1–255 terminal palette. Step headings use one of twelve grouped themes selected
+1–255 terminal palette. Step headings use one of twenty-two grouped themes selected
 during generation:
 
 - **Kizuku** — the original amber, orange, and plum palette
@@ -39,6 +39,23 @@ during generation:
 - **Rosewood** — soft rose through deep muted burgundy
 - **Arctic** — ice blue through deep ocean blue
 - **Citrus** — lemon, lime, teal, blue-grey, and grapefruit
+
+Kizuku also includes ten popular four-colour palettes from
+[Coolors](https://coolors.co/palettes/popular/4%20colors):
+
+- **Meadow Sunflower Glow**
+- **Candy Floss Dreams**
+- **Fiery Ice Cream Delight**
+- **Golden Autumn Twilight**
+- **Midnight Sun Dance**
+- **Seaside Serenity**
+- **Cherry Blossom Sky**
+- **Cotton Candy Skies**
+- **Ocean Sunset Vibes**
+- **Cherry Blossom Dream**
+
+Four-colour themes cycle their first colour back onto the fifth build role;
+five-colour themes continue to assign one distinct colour to every role.
 
 When `hum` is available the theme is selected with `hum choose`; the terminal
 fallback accepts the theme name. The palettes are kept together as theme data so

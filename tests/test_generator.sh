@@ -131,6 +131,33 @@ check_added_theme Rosewood rosewood '#ffcad4' '#f4acb7' '#9d8189' '#7d4e57' '#5c
 check_added_theme Arctic arctic '#caf0f8' '#90e0ef' '#48cae4' '#0077b6' '#023e8a'
 check_added_theme Citrus citrus '#f9c74f' '#90be6d' '#43aa8b' '#577590' '#f94144'
 
+check_four_colour_theme() {
+    theme_name=$1
+    file_name=$2
+    first_colour=$3
+    second_colour=$4
+    third_colour=$5
+    fourth_colour=$6
+    printf '\n%s App\n1.0\n\n%s\ny\ny\n\ny\n\ny\n\ny\n\n%s/%s.sh\nn\n' \
+        "$theme_name" "$theme_name" "$test_dir" "$file_name" | ./kizuku >/dev/null
+    test "$(grep -Fc -- "--foreground \"$first_colour\"" "$test_dir/$file_name.sh")" -eq 2
+    grep -Fq -- "--foreground \"$second_colour\"" "$test_dir/$file_name.sh"
+    grep -Fq -- "--foreground \"$third_colour\"" "$test_dir/$file_name.sh"
+    grep -Fq -- "--foreground \"$fourth_colour\"" "$test_dir/$file_name.sh"
+    bash -n "$test_dir/$file_name.sh"
+}
+
+check_four_colour_theme 'Meadow Sunflower Glow' meadow '#d4e09b' '#f6f4d2' '#cbdfbd' '#f19c79'
+check_four_colour_theme 'Candy Floss Dreams' candy '#ffa69e' '#faf3dd' '#b8f2e6' '#aed9e0'
+check_four_colour_theme 'Fiery Ice Cream Delight' fiery '#003049' '#d62828' '#f77f00' '#fcbf49'
+check_four_colour_theme 'Golden Autumn Twilight' golden '#219ebc' '#023047' '#ffb703' '#fb8500'
+check_four_colour_theme 'Midnight Sun Dance' midnight '#001524' '#15616d' '#ffecd1' '#ff7d00'
+check_four_colour_theme 'Seaside Serenity' seaside '#e7ecef' '#274c77' '#6096ba' '#a3cef1'
+check_four_colour_theme 'Cherry Blossom Sky' cherry-sky '#2b2d42' '#8d99ae' '#edf2f4' '#ef233c'
+check_four_colour_theme 'Cotton Candy Skies' cotton '#70d6ff' '#ff70a6' '#ff9770' '#ffd670'
+check_four_colour_theme 'Ocean Sunset Vibes' ocean '#26547c' '#ef476f' '#ffd166' '#06d6a0'
+check_four_colour_theme 'Cherry Blossom Dream' cherry-dream '#880d1e' '#dd2d4a' '#f26a8d' '#f49cbb'
+
 # Generate only the standalone Git helper.
 printf '\nGit Demo\n1.0\n/boot/home/git-demo/\n\nn\nn\nn\nn\nn\ny\n%s/git.sh\n' \
     "$test_dir" | ./kizuku >/dev/null
@@ -184,7 +211,8 @@ grep -Fq 'selected_directory=$(hum file --no-file --directory --header "Select a
 version=$(tr -d '\r\n' < VERSION)
 test "$(./kizuku --version)" = "Kizuku v$version"
 ./kizuku --help | grep -Fq "Kizuku v$version"
-./kizuku --help | grep -Fq 'Desert, Neon, Rosewood, Arctic, and Citrus'
+./kizuku --help | grep -Fq 'Desert, Neon, Rosewood, Arctic, Citrus'
+./kizuku --help | grep -Fq 'ten popular four-colour palettes'
 ./kizuku --help | grep -Fq 'Quit'
 printf 'Quit\n' | ./kizuku >/dev/null
 

@@ -22,7 +22,7 @@ namespace fs = std::filesystem;
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.17"
+#define KIZUKU_VERSION "0.18"
 #endif
 
 constexpr const char* kReset = "\033[0m";
@@ -43,113 +43,41 @@ struct Step {
 
 struct Theme {
     const char* name;
-    const char* updateCode;
-    const char* clean;
-    const char* build;
-    const char* test;
-    const char* run;
+    std::array<const char*, 5> colours;
+    std::size_t colourCount;
 };
 
 // Built-in palettes are data-only so more themes can be added without changing
 // how build steps are assembled.
-constexpr std::array<Theme, 12> kThemes = {{
-    {
-        "Kizuku",
-        "#f2cc60",
-        "#e8b76a",
-        "#d98a4e",
-        "#d98a3e",
-        "#6f3a63",
-    },
-    {
-        "Coast",
-        "#73d2de",
-        "#52b2cf",
-        "#2e86ab",
-        "#33658a",
-        "#7b6dba",
-    },
-    {
-        "Sakura",
-        "#ffb3c6",
-        "#ff8fab",
-        "#fb6f92",
-        "#c77dff",
-        "#7b2cbf",
-    },
-    {
-        "Forest",
-        "#a7c957",
-        "#6a994e",
-        "#386641",
-        "#588157",
-        "#344e41",
-    },
-    {
-        "Sunset",
-        "#ffb703",
-        "#fb8500",
-        "#f77f00",
-        "#d62828",
-        "#9d4edd",
-    },
-    {
-        "Lavender",
-        "#e0aaff",
-        "#c77dff",
-        "#9d4edd",
-        "#7b2cbf",
-        "#5a189a",
-    },
-    {
-        "Slate",
-        "#cad2c5",
-        "#84a98c",
-        "#52796f",
-        "#354f52",
-        "#2f3e46",
-    },
-    {
-        "Desert",
-        "#e9c46a",
-        "#f4a261",
-        "#e76f51",
-        "#bc6c25",
-        "#6f4e37",
-    },
-    {
-        "Neon",
-        "#39ff14",
-        "#00f5d4",
-        "#00bbf9",
-        "#9b5de5",
-        "#f15bb5",
-    },
-    {
-        "Rosewood",
-        "#ffcad4",
-        "#f4acb7",
-        "#9d8189",
-        "#7d4e57",
-        "#5c374c",
-    },
-    {
-        "Arctic",
-        "#caf0f8",
-        "#90e0ef",
-        "#48cae4",
-        "#0077b6",
-        "#023e8a",
-    },
-    {
-        "Citrus",
-        "#f9c74f",
-        "#90be6d",
-        "#43aa8b",
-        "#577590",
-        "#f94144",
-    },
+constexpr std::array<Theme, 22> kThemes = {{
+    {"Kizuku", {"#f2cc60", "#e8b76a", "#d98a4e", "#d98a3e", "#6f3a63"}, 5},
+    {"Coast", {"#73d2de", "#52b2cf", "#2e86ab", "#33658a", "#7b6dba"}, 5},
+    {"Sakura", {"#ffb3c6", "#ff8fab", "#fb6f92", "#c77dff", "#7b2cbf"}, 5},
+    {"Forest", {"#a7c957", "#6a994e", "#386641", "#588157", "#344e41"}, 5},
+    {"Sunset", {"#ffb703", "#fb8500", "#f77f00", "#d62828", "#9d4edd"}, 5},
+    {"Lavender", {"#e0aaff", "#c77dff", "#9d4edd", "#7b2cbf", "#5a189a"}, 5},
+    {"Slate", {"#cad2c5", "#84a98c", "#52796f", "#354f52", "#2f3e46"}, 5},
+    {"Desert", {"#e9c46a", "#f4a261", "#e76f51", "#bc6c25", "#6f4e37"}, 5},
+    {"Neon", {"#39ff14", "#00f5d4", "#00bbf9", "#9b5de5", "#f15bb5"}, 5},
+    {"Rosewood", {"#ffcad4", "#f4acb7", "#9d8189", "#7d4e57", "#5c374c"}, 5},
+    {"Arctic", {"#caf0f8", "#90e0ef", "#48cae4", "#0077b6", "#023e8a"}, 5},
+    {"Citrus", {"#f9c74f", "#90be6d", "#43aa8b", "#577590", "#f94144"}, 5},
+    {"Meadow Sunflower Glow", {"#d4e09b", "#f6f4d2", "#cbdfbd", "#f19c79", nullptr}, 4},
+    {"Candy Floss Dreams", {"#ffa69e", "#faf3dd", "#b8f2e6", "#aed9e0", nullptr}, 4},
+    {"Fiery Ice Cream Delight", {"#003049", "#d62828", "#f77f00", "#fcbf49", nullptr}, 4},
+    {"Golden Autumn Twilight", {"#219ebc", "#023047", "#ffb703", "#fb8500", nullptr}, 4},
+    {"Midnight Sun Dance", {"#001524", "#15616d", "#ffecd1", "#ff7d00", nullptr}, 4},
+    {"Seaside Serenity", {"#e7ecef", "#274c77", "#6096ba", "#a3cef1", nullptr}, 4},
+    {"Cherry Blossom Sky", {"#2b2d42", "#8d99ae", "#edf2f4", "#ef233c", nullptr}, 4},
+    {"Cotton Candy Skies", {"#70d6ff", "#ff70a6", "#ff9770", "#ffd670", nullptr}, 4},
+    {"Ocean Sunset Vibes", {"#26547c", "#ef476f", "#ffd166", "#06d6a0", nullptr}, 4},
+    {"Cherry Blossom Dream", {"#880d1e", "#dd2d4a", "#f26a8d", "#f49cbb", nullptr}, 4},
 }};
+
+const char* themeColour(const Theme& theme, std::size_t role) {
+    return theme.colours[role % theme.colourCount];
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
 
 struct BuildFile {
     std::string title;
@@ -679,19 +607,19 @@ bool editExistingScript(std::string& error) {
 
 const char* themedRoleColour(const std::string& line, const Theme& theme) {
     if (line.find("Update Code") != std::string::npos) {
-        return theme.updateCode;
+        return themeColour(theme, 0);
     }
     if (line.find("Make Clean") != std::string::npos) {
-        return theme.clean;
+        return themeColour(theme, 1);
     }
     if (line.find("Make Test") != std::string::npos) {
-        return theme.test;
+        return themeColour(theme, 3);
     }
     if (line.find("Run / Test") != std::string::npos) {
-        return theme.run;
+        return themeColour(theme, 4);
     }
     if (line.find("==> Step") != std::string::npos && line.find("Make") != std::string::npos) {
-        return theme.build;
+        return themeColour(theme, 2);
     }
     return nullptr;
 }
@@ -699,9 +627,6 @@ const char* themedRoleColour(const std::string& line, const Theme& theme) {
 std::size_t replaceThemeColours(std::string& line, const Theme& theme,
                                 std::unordered_map<std::string, std::string>& colourMap,
                                 std::size_t& nextColour) {
-    const std::array<const char*, 5> palette = {
-        theme.updateCode, theme.clean, theme.build, theme.test, theme.run,
-    };
     std::size_t replacements = 0;
     std::size_t searchFrom = 0;
     while (true) {
@@ -748,7 +673,7 @@ std::size_t replaceThemeColours(std::string& line, const Theme& theme,
             if (existing != colourMap.end()) {
                 newColour = existing->second;
             } else {
-                newColour = palette[nextColour % palette.size()];
+                newColour = themeColour(theme, nextColour);
                 colourMap.emplace(oldColour, newColour);
                 ++nextColour;
             }
@@ -823,11 +748,11 @@ bool restyleExistingScript(std::string& error) {
     }
 
     showStyled("Theme: " + std::string(theme.name), randomColour());
-    std::cout << "  Update Code  " << theme.updateCode << '\n'
-              << "  Make Clean   " << theme.clean << '\n'
-              << "  Make         " << theme.build << '\n'
-              << "  Make Test    " << theme.test << '\n'
-              << "  Run / Test   " << theme.run << '\n';
+    std::cout << "  Update Code  " << themeColour(theme, 0) << '\n'
+              << "  Make Clean   " << themeColour(theme, 1) << '\n'
+              << "  Make         " << themeColour(theme, 2) << '\n'
+              << "  Make Test    " << themeColour(theme, 3) << '\n'
+              << "  Run / Test   " << themeColour(theme, 4) << '\n';
     showStyled(std::to_string(replacementCount) + " colour replacement(s) found",
                randomColour());
     if (!confirm("Apply this theme to " + path.string() + "?")) {
@@ -1019,22 +944,22 @@ WizardResult runWizard() {
 
     std::vector<Step> steps;
     if (confirm("Include an Update Code step (git pull)?")) {
-        steps.push_back({"Update Code", "Git Pull?", theme.updateCode, {"git pull"}});
+        steps.push_back({"Update Code", "Git Pull?", themeColour(theme, 0), {"git pull"}});
     }
     if (confirm("Include a clean step?")) {
-        steps.push_back({"Make Clean", "Make Clean?", theme.clean,
+        steps.push_back({"Make Clean", "Make Clean?", themeColour(theme, 1),
                          {prompt("Clean command", "make clean")}});
     }
     if (confirm("Include a build step?")) {
-        steps.push_back({"Make", "Make?", theme.build, {prompt("Build command", "make")}});
+        steps.push_back({"Make", "Make?", themeColour(theme, 2), {prompt("Build command", "make")}});
     }
     if (confirm("Include a test step?")) {
-        steps.push_back({"Make Test", "Make Tests?", theme.test,
+        steps.push_back({"Make Test", "Make Tests?", themeColour(theme, 3),
                          {prompt("Test command", "make test")}});
     }
     if (confirm("Include a run step?")) {
         const auto command = prompt("Run command", "./my-project");
-        steps.push_back({"Run / Test", "Run?", theme.run, {command}});
+        steps.push_back({"Run / Test", "Run?", themeColour(theme, 4), {command}});
     }
     const fs::path output = steps.empty() ? fs::path{} : fs::path(prompt("Output build file", "build.sh"));
 
@@ -1064,7 +989,7 @@ void printUsage(const char* executable) {
               << "When Hum is available, Kizuku uses it for prompts, styling, confirmation,\n"
               << "and project-directory selection. Plain terminal prompts are used otherwise.\n"
               << "Built-in themes: Kizuku (default), Coast, Sakura, Forest, Sunset, Lavender, Slate,\n"
-              << "Desert, Neon, Rosewood, Arctic, and Citrus.\n";
+              << "Desert, Neon, Rosewood, Arctic, Citrus, and ten popular four-colour palettes.\n";
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
