@@ -1,5 +1,6 @@
-#include <cerrno>
+#include <algorithm>
 #include <array>
+#include <cerrno>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -22,7 +23,7 @@ namespace fs = std::filesystem;
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.22"
+#define KIZUKU_VERSION "0.23"
 #endif
 
 constexpr const char* kReset = "\033[0m";
@@ -400,6 +401,92 @@ std::vector<std::string> commaSeparated(const std::string& value) {
     }
     return items;
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+std::vector<std::string> collectStepCommands(const std::vector<std::string>& lines) {
+    std::vector<std::string> commands;
+    for (std::size_t heading = 0; heading < lines.size(); ++heading) {
+        if (lines[heading].find("hum style") == std::string::npos ||
+            lines[heading].find("==> Step ") == std::string::npos) {
+            continue;
+        }
+
+        std::size_t confirmation = heading + 1;
+        while (confirmation < lines.size() && trim(lines[confirmation]).empty()) {
+            ++confirmation;
+        }
+        if (confirmation >= lines.size() ||
+            trim(lines[confirmation]).rfind("if hum confirm ", 0) != 0) {
+            continue;
+        }
+
+        std::size_t depth = 1;
+        std::size_t end = confirmation + 1;
+        for (; end < lines.size(); ++end) {
+            const auto statement = trim(lines[end]);
+            if (statement.rfind("if ", 0) == 0 && statement.find("; then") != std::string::npos) {
+                ++depth;
+            } else if (statement == "fi") {
+                --depth;
+                if (depth == 0) {
+                    break;
+                }
+            }
+        }
+        if (end >= lines.size()) {
+            continue;
+        }
+
+        std::size_t indentation = std::string::npos;
+        for (std::size_t index = confirmation + 1; index < end; ++index) {
+            if (trim(lines[index]).empty()) {
+                continue;
+            }
+            indentation = std::min(indentation, lines[index].find_first_not_of(" \t"));
+        }
+        if (indentation == std::string::npos) {
+            continue;
+        }
+        if (!commands.empty()) {
+            commands.emplace_back();
+        }
+        for (std::size_t index = confirmation + 1; index < end; ++index) {
+            if (lines[index].size() <= indentation) {
+                commands.emplace_back();
+            } else {
+                commands.push_back(lines[index].substr(indentation));
+            }
+        }
+        heading = end;
+    }
+    while (!commands.empty() && commands.back().empty()) {
+        commands.pop_back();
+    }
+    return commands;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+std::vector<std::string> buildAllOrNothingSnippet(const std::vector<std::string>& lines) {
+    const auto commands = collectStepCommands(lines);
+    if (commands.empty()) {
+        return {};
+    }
+
+    const auto question = prompt("All-or-nothing question", "Run all steps?");
+    const auto defaultAnswer = selectOption("Default answer", {"No", "Yes"}, "No");
+    std::vector<std::string> snippet = {
+        "if hum confirm " + shellDoubleQuoted(question) + " --default=" +
+            (defaultAnswer == "Yes" ? "yes" : "no") + "; then",
+    };
+    for (const auto& command : commands) {
+        snippet.push_back(command.empty() ? std::string{} : "    " + command);
+    }
+    snippet.push_back("fi");
+    return snippet;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
 
 std::vector<std::string> buildHumSnippet(const std::string& type) {
     if (type == "Git Pull Basic") {
@@ -646,10 +733,15 @@ bool editExistingScript(std::string& error) {
     }
 
     const auto type = selectOption("Block to add",
-        {"Git Pull Basic", "Hum Confirm", "Hum Choose", "Hum Input", "Hum File Picker",
-         "Hum Style", "Hum Write", "Hum Spin"},
+        {"All or Nothing", "Git Pull Basic", "Hum Confirm", "Hum Choose", "Hum Input",
+         "Hum File Picker", "Hum Style", "Hum Write", "Hum Spin"},
         "Hum Confirm");
-    const auto snippet = buildHumSnippet(type);
+    const auto snippet = type == "All or Nothing"
+        ? buildAllOrNothingSnippet(lines) : buildHumSnippet(type);
+    if (snippet.empty()) {
+        error = "no commands were found in styled Hum step blocks";
+        return false;
+    }
 
     showStyled("Block preview", randomColour());
     for (const auto& snippetLine : snippet) {

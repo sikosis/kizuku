@@ -206,6 +206,29 @@ grep -Fq 'hum style --foreground "#d4e09b" --bold "==> Step 1: Update Code"' \
 grep -Fq 'if hum confirm "Git Pull?" --default=no; then' "$test_dir/edit-git-pull.sh"
 grep -Fq '    git pull' "$test_dir/edit-git-pull.sh"
 
+# Collect every generated step command into one all-or-nothing confirmation.
+cp "$test_dir/build.sh" "$test_dir/edit-all-or-nothing.sh"
+printf 'Edit an existing script\n%s/edit-all-or-nothing.sh\nAll or Nothing\n\nNo\n\ny\n' \
+    "$test_dir" | ./kizuku >/dev/null
+bash -n "$test_dir/edit-all-or-nothing.sh"
+grep -Fq 'if hum confirm "Run all steps?" --default=no; then' \
+    "$test_dir/edit-all-or-nothing.sh"
+test "$(grep -Fc '    git pull' "$test_dir/edit-all-or-nothing.sh")" -eq 2
+test "$(grep -Fc '    make clean' "$test_dir/edit-all-or-nothing.sh")" -eq 2
+test "$(grep -Fc '    make -j4' "$test_dir/edit-all-or-nothing.sh")" -eq 2
+test "$(grep -Fc '    make test' "$test_dir/edit-all-or-nothing.sh")" -eq 2
+test "$(grep -Fc '    ./my-project' "$test_dir/edit-all-or-nothing.sh")" -eq 2
+
+# Refuse All or Nothing without recognised steps and preserve the source file.
+printf '#!/bin/sh\necho "no styled steps"\n' > "$test_dir/edit-all-or-nothing-empty.sh"
+cp "$test_dir/edit-all-or-nothing-empty.sh" "$test_dir/edit-all-or-nothing-empty.expected"
+if printf 'Edit an existing script\n%s/edit-all-or-nothing-empty.sh\nAll or Nothing\n' \
+    "$test_dir" | ./kizuku >/dev/null 2>&1; then
+    echo "All or Nothing unexpectedly accepted a script without styled steps" >&2
+    exit 1
+fi
+cmp "$test_dir/edit-all-or-nothing-empty.expected" "$test_dir/edit-all-or-nothing-empty.sh"
+
 # Select a source insertion point and add a Hum Choose block after the shebang.
 printf '#!/bin/sh\n\necho "existing"\n' > "$test_dir/edit-choose.sh"
 chmod 700 "$test_dir/edit-choose.sh"
