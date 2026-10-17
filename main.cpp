@@ -22,7 +22,7 @@ namespace fs = std::filesystem;
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.18"
+#define KIZUKU_VERSION "0.22"
 #endif
 
 constexpr const char* kReset = "\033[0m";
@@ -308,7 +308,15 @@ const Theme& selectTheme() {
     for (const auto& theme : kThemes) {
         names.push_back(theme.name);
     }
+    names.push_back("Random Theme");
     const auto selection = selectOption("Choose a colour theme", names, kThemes.front().name);
+    if (selection == "Random Theme") {
+        static std::mt19937 generator(std::random_device{}());
+        static std::uniform_int_distribution<std::size_t> distribution(0, kThemes.size() - 1);
+        const Theme& theme = kThemes[distribution(generator)];
+        showStyled("Random theme selected: " + std::string(theme.name), randomColour());
+        return theme;
+    }
     for (const auto& theme : kThemes) {
         if (selection == theme.name) {
             return theme;
@@ -316,6 +324,8 @@ const Theme& selectTheme() {
     }
     return kThemes.front();
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
+
 
 std::string selectOption(const std::string& header, const std::vector<std::string>& options,
                          const std::string& fallback) {
@@ -392,10 +402,20 @@ std::vector<std::string> commaSeparated(const std::string& value) {
 }
 
 std::vector<std::string> buildHumSnippet(const std::string& type) {
+    if (type == "Git Pull Basic") {
+        const auto defaultAnswer = selectOption("Default answer", {"No", "Yes"}, "No");
+        return {"hum style --foreground \"#d4e09b\" --bold \"==> Step 1: Update Code\"",
+                "if hum confirm \"Git Pull?\" --default=" +
+                    std::string(defaultAnswer == "Yes" ? "yes" : "no") + "; then",
+                "    git pull",
+                "fi"};
+    }
     if (type == "Hum Confirm") {
         const auto question = prompt("Confirmation question", "Continue?");
+        const auto defaultAnswer = selectOption("Default answer", {"No", "Yes"}, "No");
         const auto command = prompt("Command when confirmed", "echo \"Confirmed\"");
-        return {"if hum confirm " + shellDoubleQuoted(question) + "; then",
+        return {"if hum confirm " + shellDoubleQuoted(question) + " --default=" +
+                    (defaultAnswer == "Yes" ? "yes" : "no") + "; then",
                 "    " + command,
                 "fi"};
     }
@@ -474,6 +494,78 @@ bool parseLineNumber(const std::string& value, std::size_t maximum, std::size_t&
         return false;
     }
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+std::string insertionPreview(const std::string& line) {
+    std::string preview;
+    preview.reserve(line.size());
+    for (const unsigned char character : line) {
+        if (character < 32 || character == 127) {
+            preview.push_back(' ');
+        } else {
+            preview.push_back(static_cast<char>(character));
+        }
+    }
+    return preview.empty() ? "(blank line)" : preview;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+std::optional<std::size_t> selectInsertionPoint(const std::vector<std::string>& lines,
+                                                const std::string& blockType) {
+    if (gUseHum) {
+        constexpr const char* delimiter = "\t";
+        std::vector<std::string> arguments = {
+            "choose", "--header", "Insert " + blockType + " before:",
+            "--height", "15", "--label-delimiter", delimiter,
+        };
+        for (std::size_t index = 0; index < lines.size(); ++index) {
+            arguments.push_back("Line " + std::to_string(index + 1) + " | " +
+                                insertionPreview(lines[index]) + delimiter +
+                                std::to_string(index));
+        }
+        const std::string endOption = "End of script" + std::string(delimiter) +
+                                      std::to_string(lines.size());
+        arguments.push_back(endOption);
+        arguments.push_back("Cancel" + std::string(delimiter) + "cancel");
+
+        const auto selection = captureHum(arguments);
+        if (!selection || *selection == "cancel") {
+            return std::nullopt;
+        }
+        try {
+            std::size_t consumed = 0;
+            const auto insertion = std::stoul(*selection, &consumed);
+            if (consumed == selection->size() && insertion <= lines.size()) {
+                return insertion;
+            }
+        } catch (...) {
+        }
+        return std::nullopt;
+    }
+
+    showStyled("Choose where to insert " + blockType, randomColour());
+    std::cout << "0 | Cancel\n";
+    for (std::size_t index = 0; index < lines.size(); ++index) {
+        std::cout << index + 1 << " | Before: " << insertionPreview(lines[index]) << '\n';
+    }
+    const std::size_t endChoice = lines.size() + 1;
+    std::cout << endChoice << " | End of script\n";
+
+    while (true) {
+        const auto selection = prompt("Insertion point", std::to_string(endChoice));
+        if (selection == "0") {
+            return std::nullopt;
+        }
+        std::size_t choice = 0;
+        if (parseLineNumber(selection, endChoice, choice)) {
+            return choice - 1;
+        }
+        std::cout << "Enter a number from 0 to " << endChoice << ".\n";
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
 
 bool rewriteScript(const fs::path& path, const std::vector<std::string>& lines, std::string& error) {
     struct stat details {};
@@ -554,7 +646,8 @@ bool editExistingScript(std::string& error) {
     }
 
     const auto type = selectOption("Block to add",
-        {"Hum Confirm", "Hum Choose", "Hum Input", "Hum File Picker", "Hum Style", "Hum Write", "Hum Spin"},
+        {"Git Pull Basic", "Hum Confirm", "Hum Choose", "Hum Input", "Hum File Picker",
+         "Hum Style", "Hum Write", "Hum Spin"},
         "Hum Confirm");
     const auto snippet = buildHumSnippet(type);
 
@@ -564,26 +657,10 @@ bool editExistingScript(std::string& error) {
     }
     std::cout << '\n';
 
-    const auto placement = selectOption("Where should it be inserted?",
-        {"After shebang", "Before a line", "After a line", "End of script"},
-        "End of script");
-    std::size_t insertion = lines.size();
-    if (placement == "After shebang") {
-        insertion = !lines.empty() && lines.front().rfind("#!", 0) == 0 ? 1 : 0;
-    } else if (placement == "Before a line" || placement == "After a line") {
-        if (lines.empty()) {
-            error = "cannot select a line in an empty script";
-            return false;
-        }
-        showStyled("Current script", randomColour());
-        for (std::size_t index = 0; index < lines.size(); ++index) {
-            std::cout << index + 1 << " | " << lines[index] << '\n';
-        }
-        std::size_t lineNumber = 0;
-        while (!parseLineNumber(prompt("Line number"), lines.size(), lineNumber)) {
-            std::cout << "Enter a line number from 1 to " << lines.size() << ".\n";
-        }
-        insertion = placement == "Before a line" ? lineNumber - 1 : lineNumber;
+    const auto insertion = selectInsertionPoint(lines, type);
+    if (!insertion) {
+        error = "edit cancelled";
+        return false;
     }
 
     if (!confirm("Insert this block into " + path.string() + "?")) {
@@ -592,14 +669,14 @@ bool editExistingScript(std::string& error) {
     }
 
     std::vector<std::string> addition;
-    if (insertion > 0 && !lines[insertion - 1].empty()) {
+    if (*insertion > 0 && !lines[*insertion - 1].empty()) {
         addition.emplace_back();
     }
     addition.insert(addition.end(), snippet.begin(), snippet.end());
-    if (insertion < lines.size() && !lines[insertion].empty()) {
+    if (*insertion < lines.size() && !lines[*insertion].empty()) {
         addition.emplace_back();
     }
-    lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(insertion),
+    lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(*insertion),
                  addition.begin(), addition.end());
     return rewriteScript(path, lines, error);
 }
@@ -983,7 +1060,7 @@ void printUsage(const char* executable) {
               << "  -v, --version    Show the Kizuku version\n\n"
               << "Interactive workflows:\n"
               << "  Create new scripts       Generate themed build and Git helpers\n"
-              << "  Edit an existing script  Insert configured Hum blocks by location\n"
+              << "  Edit an existing script  Insert configured Hum blocks at a source position\n"
               << "  Restyle a script         Replace Hum hex colours with a selected theme\n"
               << "  Quit                     Exit without making changes\n\n"
               << "When Hum is available, Kizuku uses it for prompts, styling, confirmation,\n"

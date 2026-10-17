@@ -58,23 +58,28 @@ Four-colour themes cycle their first colour back onto the fifth build role;
 five-colour themes continue to assign one distinct colour to every role.
 
 When `hum` is available the theme is selected with `hum choose`; the terminal
-fallback accepts the theme name. The palettes are kept together as theme data so
-more choices can be added without changing the step generator.
+fallback accepts the theme name. Selecting **Random Theme** chooses one of the
+built-in palettes and displays its name before continuing. The palettes are kept
+together as theme data so more choices can be added without changing the step
+generator.
 
 ## Edit an existing script
 
 Choose **Edit an existing script** from Kizuku's opening menu. Kizuku can insert
 configured `hum confirm`, `hum choose`, `hum input`, `hum file`, `hum style`,
-`hum write`, or `hum spin` blocks into an existing script. Generated Hum file
-pickers resolve the script's own directory and open there, so they continue to
-work when the project is moved. In directory pickers, the right-arrow key opens
-the highlighted folder and Enter selects it. Hum input defaults are displayed
-as placeholders, so they do not need to be deleted before typing. The insertion
-wizard supports:
-
-- immediately after the shebang;
-- before or after a selected line; or
-- at the end of the script.
+`hum write`, or `hum spin` blocks into an existing script. The ready-made
+**Git Pull Basic** template adds a styled Update Code heading, a configurable
+default response, and a guarded `git pull` command. Generated Hum file pickers
+resolve the script's own directory and open there, so they continue to work
+when the project is moved. In directory pickers, the right-arrow key opens the
+highlighted folder and Enter selects it. Hum input defaults are displayed as
+placeholders, so they do not need to be deleted before typing. Hum confirm
+blocks ask whether **Yes** or **No** should be the default response, with **No**
+selected by default. After the block is configured, the insertion picker shows
+the current script as a navigable list. Selecting a source line inserts the
+block immediately before that line; **End of script** appends it, and **Cancel**
+leaves the file alone. Without Hum, the same insertion points are shown as a
+numbered list.
 
 Kizuku previews the block and asks for confirmation before editing. It writes
 through a temporary file, atomically replaces the original, and preserves the

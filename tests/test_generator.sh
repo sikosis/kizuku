@@ -158,6 +158,14 @@ check_four_colour_theme 'Cotton Candy Skies' cotton '#70d6ff' '#ff70a6' '#ff9770
 check_four_colour_theme 'Ocean Sunset Vibes' ocean '#26547c' '#ef476f' '#ffd166' '#06d6a0'
 check_four_colour_theme 'Cherry Blossom Dream' cherry-dream '#880d1e' '#dd2d4a' '#f26a8d' '#f49cbb'
 
+# Random Theme selects and reports one complete built-in palette.
+random_output=$(printf '\nRandom App\n1.0\n\nRandom Theme\ny\nn\ny\n\nn\nn\n%s/random.sh\nn\n' \
+    "$test_dir" | ./kizuku)
+printf '%s\n' "$random_output" | grep -Fq 'Random theme selected:'
+test -x "$test_dir/random.sh"
+bash -n "$test_dir/random.sh"
+grep -Eq -- '--foreground "#[0-9a-f]{6}"' "$test_dir/random.sh"
+
 # Generate only the standalone Git helper.
 printf '\nGit Demo\n1.0\n/boot/home/git-demo/\n\nn\nn\nn\nn\nn\ny\n%s/git.sh\n' \
     "$test_dir" | ./kizuku >/dev/null
@@ -173,18 +181,35 @@ check_numeric_colours "$test_dir/git.sh"
 # Edit an existing executable script and append a configured Hum Confirm block.
 printf '#!/bin/sh\n\necho "start"\n' > "$test_dir/edit-me.sh"
 chmod 754 "$test_dir/edit-me.sh"
-printf 'Edit an existing script\n%s/edit-me.sh\nHum Confirm\nDeploy?\necho "deploying"\nEnd of script\ny\n' \
+printf 'Edit an existing script\n%s/edit-me.sh\nHum Confirm\nDeploy?\nNo\necho "deploying"\n\ny\n' \
     "$test_dir" | ./kizuku >/dev/null
 test -x "$test_dir/edit-me.sh"
 sh -n "$test_dir/edit-me.sh"
-grep -Fq 'if hum confirm "Deploy?"; then' "$test_dir/edit-me.sh"
+grep -Fq 'if hum confirm "Deploy?" --default=no; then' "$test_dir/edit-me.sh"
 grep -Fq '    echo "deploying"' "$test_dir/edit-me.sh"
 grep -Fq 'fi' "$test_dir/edit-me.sh"
 
-# Insert a Hum Choose block after the shebang using shell-safe item quoting.
+# The Hum Confirm wizard can also generate an affirmative default.
+printf '#!/bin/sh\n' > "$test_dir/edit-confirm-yes.sh"
+printf 'Edit an existing script\n%s/edit-confirm-yes.sh\nHum Confirm\nContinue?\nYes\necho "continuing"\n\ny\n' \
+    "$test_dir" | ./kizuku >/dev/null
+sh -n "$test_dir/edit-confirm-yes.sh"
+grep -Fq 'if hum confirm "Continue?" --default=yes; then' "$test_dir/edit-confirm-yes.sh"
+
+# Add the ready-made basic Git pull step at a selected source position.
+printf '#!/bin/sh\n\necho "existing"\n' > "$test_dir/edit-git-pull.sh"
+printf 'Edit an existing script\n%s/edit-git-pull.sh\nGit Pull Basic\nNo\n3\ny\n' \
+    "$test_dir" | ./kizuku >/dev/null
+sh -n "$test_dir/edit-git-pull.sh"
+grep -Fq 'hum style --foreground "#d4e09b" --bold "==> Step 1: Update Code"' \
+    "$test_dir/edit-git-pull.sh"
+grep -Fq 'if hum confirm "Git Pull?" --default=no; then' "$test_dir/edit-git-pull.sh"
+grep -Fq '    git pull' "$test_dir/edit-git-pull.sh"
+
+# Select a source insertion point and add a Hum Choose block after the shebang.
 printf '#!/bin/sh\n\necho "existing"\n' > "$test_dir/edit-choose.sh"
 chmod 700 "$test_dir/edit-choose.sh"
-printf 'Edit an existing script\n%s/edit-choose.sh\nHum Choose\nselection\nFirst item, Second item\nAfter shebang\ny\n' \
+printf 'Edit an existing script\n%s/edit-choose.sh\nHum Choose\nselection\nFirst item, Second item\n2\ny\n' \
     "$test_dir" | ./kizuku >/dev/null
 test -x "$test_dir/edit-choose.sh"
 sh -n "$test_dir/edit-choose.sh"
@@ -192,15 +217,22 @@ grep -Fq "selection=\$(hum choose 'First item' 'Second item')" "$test_dir/edit-c
 
 # Exercise numbered placement by inserting input immediately before line 3.
 printf '#!/bin/sh\n\necho "existing"\n' > "$test_dir/edit-before.sh"
-printf 'Edit an existing script\n%s/edit-before.sh\nHum Input\nanswer\nYour answer\nBefore a line\n3\ny\n' \
+printf 'Edit an existing script\n%s/edit-before.sh\nHum Input\nanswer\nYour answer\n3\ny\n' \
     "$test_dir" | ./kizuku >/dev/null
 sh -n "$test_dir/edit-before.sh"
 test "$(sed -n '3p' "$test_dir/edit-before.sh")" = 'answer=$(hum input --placeholder "Your answer")'
 
+# Cancelling from the source insertion picker must leave the script untouched.
+printf '#!/bin/sh\necho "keep me"\n' > "$test_dir/edit-cancel.sh"
+cp "$test_dir/edit-cancel.sh" "$test_dir/edit-cancel.expected"
+printf 'Edit an existing script\n%s/edit-cancel.sh\nHum Spin\n\n\n0\n' \
+    "$test_dir" | ./kizuku >/dev/null
+cmp "$test_dir/edit-cancel.expected" "$test_dir/edit-cancel.sh"
+
 # A generated Hum file picker starts from the script/project directory rather
 # than whichever directory the user happens to launch the script from.
 printf '#!/bin/sh\n' > "$test_dir/edit-file-picker.sh"
-printf 'Edit an existing script\n%s/edit-file-picker.sh\nHum File Picker\nselected_directory\nDirectory\n\nEnd of script\ny\n' \
+printf 'Edit an existing script\n%s/edit-file-picker.sh\nHum File Picker\nselected_directory\nDirectory\n\n\ny\n' \
     "$test_dir" | ./kizuku >/dev/null
 sh -n "$test_dir/edit-file-picker.sh"
 grep -Fq 'project_directory=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)' \
