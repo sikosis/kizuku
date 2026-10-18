@@ -94,6 +94,24 @@ sh -n "$test_dir/custom-colours.sh"
 test "$(grep -Fc -- '--foreground "#ffb703"' "$test_dir/custom-colours.sh")" -eq 2
 grep -Fq 'echo "#123456"' "$test_dir/custom-colours.sh"
 
+# Restyle repairs duplicated step numbers even when numeric colours are left unchanged.
+printf '%s\n' \
+    '#!/bin/sh' \
+    'hum style --foreground 41 --bold "==> Step 1: Update Code"' \
+    'hum style --foreground 42 --bold "==> Step 1: Make Clean"' \
+    'hum style --foreground 43 --bold "==> Step 2: Make"' \
+    'hum style --foreground 44 --bold "==> Step 3: Package / Install"' \
+    'hum style --foreground 45 --bold "==> Step 4: Run / Test"' \
+    > "$test_dir/renumber-steps.sh"
+printf 'Restyle an existing script\n%s/renumber-steps.sh\nKizuku\ny\n' "$test_dir" \
+    | ./kizuku >/dev/null
+sh -n "$test_dir/renumber-steps.sh"
+grep -Fq -- '--foreground 41 --bold "==> Step 1: Update Code"' "$test_dir/renumber-steps.sh"
+grep -Fq -- '--foreground 42 --bold "==> Step 2: Make Clean"' "$test_dir/renumber-steps.sh"
+grep -Fq -- '--foreground 43 --bold "==> Step 3: Make"' "$test_dir/renumber-steps.sh"
+grep -Fq -- '--foreground 44 --bold "==> Step 4: Package / Install"' "$test_dir/renumber-steps.sh"
+grep -Fq -- '--foreground 45 --bold "==> Step 5: Run / Test"' "$test_dir/renumber-steps.sh"
+
 # Verify both additional palettes across all five step roles.
 printf '\nCoast App\n1.0\n\nCoast\ny\ny\n\ny\n\ny\n\ny\n\n%s/coast.sh\nn\n' "$test_dir" \
     | ./kizuku >/dev/null

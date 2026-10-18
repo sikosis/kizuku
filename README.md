@@ -92,10 +92,13 @@ original file permissions.
 Choose **Restyle an existing script**, select a shell script and then choose any
 built-in theme. Kizuku updates hexadecimal colours attached to Hum
 `--foreground` options while leaving numeric colours, unrelated hexadecimal
-text, and the rest of the script unchanged. Known generated steps keep their
-semantic theme roles; other repeated colours are mapped consistently through
-the selected palette. Kizuku reports the replacement count and asks before
-atomically replacing the original file.
+text, and the rest of the script unchanged. It also finds `==> Step N:`
+headings and renumbers them sequentially from one in source order. This
+renumbering still works when a script uses numeric colours and has no theme
+colours to replace. Known generated steps keep their semantic theme roles;
+other repeated colours are mapped consistently through the selected palette.
+Kizuku reports both update counts and asks before atomically replacing the
+original file.
 
 Kizuku can also generate a standalone POSIX shell script that stages all Git
 changes, gathers a commit title and optional details with `hum`, commits them,

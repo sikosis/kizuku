@@ -23,7 +23,7 @@ namespace fs = std::filesystem;
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.23"
+#define KIZUKU_VERSION "0.24"
 #endif
 
 constexpr const char* kReset = "\033[0m";
@@ -856,6 +856,34 @@ std::size_t replaceThemeColours(std::string& line, const Theme& theme,
     }
     return replacements;
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+bool renumberStepHeading(std::string& line, std::size_t number, bool& changed) {
+    constexpr const char* prefix = "==> Step ";
+    const auto numberStart = line.find(prefix);
+    if (numberStart == std::string::npos) {
+        return false;
+    }
+
+    const std::size_t digitStart = numberStart + std::string(prefix).size();
+    std::size_t digitEnd = digitStart;
+    while (digitEnd < line.size() &&
+           std::isdigit(static_cast<unsigned char>(line[digitEnd]))) {
+        ++digitEnd;
+    }
+    if (digitEnd == digitStart || digitEnd >= line.size() || line[digitEnd] != ':') {
+        return false;
+    }
+
+    const std::string replacement = std::to_string(number);
+    changed = line.compare(digitStart, digitEnd - digitStart, replacement) != 0;
+    if (changed) {
+        line.replace(digitStart, digitEnd - digitStart, replacement);
+    }
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
 
 bool restyleExistingScript(std::string& error) {
     fs::path path;
@@ -897,8 +925,17 @@ bool restyleExistingScript(std::string& error) {
     std::unordered_map<std::string, std::string> colourMap;
     std::size_t nextColour = 0;
     std::size_t replacementCount = 0;
+    std::size_t headingUpdateCount = 0;
+    std::size_t nextStepNumber = 1;
     bool insideHumStyle = false;
     for (auto& scriptLine : lines) {
+        bool headingChanged = false;
+        if (renumberStepHeading(scriptLine, nextStepNumber, headingChanged)) {
+            ++nextStepNumber;
+            if (headingChanged) {
+                ++headingUpdateCount;
+            }
+        }
         if (scriptLine.find("hum style") != std::string::npos) {
             insideHumStyle = true;
         }
@@ -911,8 +948,9 @@ bool restyleExistingScript(std::string& error) {
             insideHumStyle = false;
         }
     }
-    if (replacementCount == 0) {
-        error = "no hexadecimal Hum foreground colours were found in " + path.string();
+    if (replacementCount == 0 && headingUpdateCount == 0) {
+        error = "no hexadecimal Hum foreground colours or out-of-sequence step headings were found in " +
+                path.string();
         return false;
     }
 
@@ -922,9 +960,9 @@ bool restyleExistingScript(std::string& error) {
               << "  Make         " << themeColour(theme, 2) << '\n'
               << "  Make Test    " << themeColour(theme, 3) << '\n'
               << "  Run / Test   " << themeColour(theme, 4) << '\n';
-    showStyled(std::to_string(replacementCount) + " colour replacement(s) found",
-               randomColour());
-    if (!confirm("Apply this theme to " + path.string() + "?")) {
+    showStyled(std::to_string(replacementCount) + " colour replacement(s) and " +
+               std::to_string(headingUpdateCount) + " step number update(s) found", randomColour());
+    if (!confirm("Apply these restyle changes to " + path.string() + "?")) {
         error = "edit cancelled";
         return false;
     }
