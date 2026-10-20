@@ -326,6 +326,46 @@ if printf 'Edit an existing script\n%s/edit-confirm-status-empty.sh\nCheck Hum C
 fi
 cmp "$test_dir/edit-confirm-status-empty.expected" "$test_dir/edit-confirm-status-empty.sh"
 
+# Select exact version occurrences and adjust them by 0.1 in either direction.
+printf '%s\n' \
+    '#!/bin/sh' \
+    'hum style --bold "Builder v0.2"' \
+    'echo "Release v1.9"' \
+    'echo "Precise v0.26"' \
+    > "$test_dir/edit-version.sh"
+chmod 751 "$test_dir/edit-version.sh"
+printf 'Edit an existing script\n%s/edit-version.sh\nUpdate Script Version\n1\nIncrement (+0.1)\ny\n' \
+    "$test_dir" | ./kizuku >/dev/null
+grep -Fq 'hum style --bold "Builder v0.3"' "$test_dir/edit-version.sh"
+printf 'Edit an existing script\n%s/edit-version.sh\nUpdate Script Version\n2\nDecrement (-0.1)\ny\n' \
+    "$test_dir" | ./kizuku >/dev/null
+grep -Fq 'echo "Release v1.8"' "$test_dir/edit-version.sh"
+printf 'Edit an existing script\n%s/edit-version.sh\nUpdate Script Version\n3\nIncrement (+0.1)\ny\n' \
+    "$test_dir" | ./kizuku >/dev/null
+grep -Fq 'echo "Precise v0.36"' "$test_dir/edit-version.sh"
+test -x "$test_dir/edit-version.sh"
+sh -n "$test_dir/edit-version.sh"
+
+# Reject a decrement below zero and preserve the original script.
+printf '#!/bin/sh\necho "Version v0.0"\n' > "$test_dir/edit-version-zero.sh"
+cp "$test_dir/edit-version-zero.sh" "$test_dir/edit-version-zero.expected"
+if printf 'Edit an existing script\n%s/edit-version-zero.sh\nUpdate Script Version\n1\nDecrement (-0.1)\n' \
+    "$test_dir" | ./kizuku >/dev/null 2>&1; then
+    echo "version updater decremented below zero" >&2
+    exit 1
+fi
+cmp "$test_dir/edit-version-zero.expected" "$test_dir/edit-version-zero.sh"
+
+# A version update with no recognised version text leaves the script unchanged.
+printf '#!/bin/sh\necho "no version"\n' > "$test_dir/edit-version-empty.sh"
+cp "$test_dir/edit-version-empty.sh" "$test_dir/edit-version-empty.expected"
+if printf 'Edit an existing script\n%s/edit-version-empty.sh\nUpdate Script Version\n' \
+    "$test_dir" | ./kizuku >/dev/null 2>&1; then
+    echo "version updater unexpectedly accepted a script without versions" >&2
+    exit 1
+fi
+cmp "$test_dir/edit-version-empty.expected" "$test_dir/edit-version-empty.sh"
+
 version=$(tr -d '\r\n' < VERSION)
 test "$(./kizuku --version)" = "Kizuku v$version"
 ./kizuku --help | grep -Fq "Kizuku v$version"

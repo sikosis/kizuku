@@ -7,9 +7,11 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <random>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <system_error>
 #include <unordered_map>
@@ -23,7 +25,7 @@ namespace fs = std::filesystem;
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.26"
+#define KIZUKU_VERSION "0.27"
 #endif
 
 constexpr const char* kReset = "\033[0m";
@@ -833,6 +835,160 @@ void setHumConfirmDefault(std::string& line, const std::string& answer) {
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
+
+struct VersionOccurrence {
+    std::size_t line;
+    std::size_t column;
+    std::size_t length;
+    std::string value;
+};
+
+std::vector<VersionOccurrence> findVersionOccurrences(const std::vector<std::string>& lines) {
+    std::vector<VersionOccurrence> occurrences;
+    for (std::size_t lineIndex = 0; lineIndex < lines.size(); ++lineIndex) {
+        const auto& line = lines[lineIndex];
+        for (std::size_t start = 0; start < line.size(); ++start) {
+            if (line[start] != 'v' ||
+                (start > 0 && (std::isalnum(static_cast<unsigned char>(line[start - 1])) ||
+                               line[start - 1] == '_'))) {
+                continue;
+            }
+            std::size_t cursor = start + 1;
+            const std::size_t majorStart = cursor;
+            while (cursor < line.size() && std::isdigit(static_cast<unsigned char>(line[cursor]))) {
+                ++cursor;
+            }
+            if (cursor == majorStart || cursor >= line.size() || line[cursor] != '.') {
+                continue;
+            }
+            ++cursor;
+            const std::size_t fractionStart = cursor;
+            while (cursor < line.size() && std::isdigit(static_cast<unsigned char>(line[cursor]))) {
+                ++cursor;
+            }
+            if (cursor == fractionStart ||
+                (cursor < line.size() && (line[cursor] == '.' || line[cursor] == '_' ||
+                                          std::isalnum(static_cast<unsigned char>(line[cursor]))))) {
+                continue;
+            }
+            occurrences.push_back({lineIndex, start, cursor - start,
+                                   line.substr(start, cursor - start)});
+            start = cursor - 1;
+        }
+    }
+    return occurrences;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+std::optional<VersionOccurrence> selectVersionOccurrence(
+        const std::vector<std::string>& lines,
+        const std::vector<VersionOccurrence>& occurrences) {
+    if (occurrences.empty()) {
+        return std::nullopt;
+    }
+    if (gUseHum) {
+        constexpr const char* delimiter = "\t";
+        std::vector<std::string> arguments = {
+            "choose", "--header", "Select a script version to update:",
+            "--height", "15", "--label-delimiter", delimiter,
+        };
+        for (std::size_t choice = 0; choice < occurrences.size(); ++choice) {
+            const auto& occurrence = occurrences[choice];
+            arguments.push_back("Line " + std::to_string(occurrence.line + 1) +
+                                ", column " + std::to_string(occurrence.column + 1) +
+                                " [" + occurrence.value + "] | " +
+                                insertionPreview(lines[occurrence.line]) + delimiter +
+                                std::to_string(choice));
+        }
+        arguments.push_back("Cancel" + std::string(delimiter) + "cancel");
+        const auto selection = captureHum(arguments);
+        if (!selection || *selection == "cancel") {
+            return std::nullopt;
+        }
+        try {
+            std::size_t consumed = 0;
+            const auto choice = std::stoul(*selection, &consumed);
+            if (consumed == selection->size() && choice < occurrences.size()) {
+                return occurrences[choice];
+            }
+        } catch (...) {
+        }
+        return std::nullopt;
+    }
+
+    showStyled("Script versions", randomColour());
+    std::cout << "0 | Cancel\n";
+    for (std::size_t choice = 0; choice < occurrences.size(); ++choice) {
+        const auto& occurrence = occurrences[choice];
+        std::cout << choice + 1 << " | Line " << occurrence.line + 1
+                  << ", column " << occurrence.column + 1 << " [" << occurrence.value
+                  << "] | " << insertionPreview(lines[occurrence.line]) << '\n';
+    }
+    while (true) {
+        const auto selection = prompt("Version to update");
+        if (selection == "0") {
+            return std::nullopt;
+        }
+        std::size_t choice = 0;
+        if (parseLineNumber(selection, occurrences.size(), choice)) {
+            return occurrences[choice - 1];
+        }
+        std::cout << "Enter a number from 0 to " << occurrences.size() << ".\n";
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+std::optional<std::string> adjustVersion(const std::string& version, bool increment,
+                                         std::string& error) {
+    const auto point = version.find('.');
+    if (version.size() < 4 || version.front() != 'v' || point == std::string::npos) {
+        error = "unsupported version format: " + version;
+        return std::nullopt;
+    }
+    const std::string majorText = version.substr(1, point - 1);
+    const std::string fractionText = version.substr(point + 1);
+    try {
+        unsigned long long scale = 1;
+        for (std::size_t digit = 0; digit < fractionText.size(); ++digit) {
+            if (scale > std::numeric_limits<unsigned long long>::max() / 10) {
+                throw std::out_of_range("version precision is too large");
+            }
+            scale *= 10;
+        }
+        const unsigned long long major = std::stoull(majorText);
+        const unsigned long long fraction = std::stoull(fractionText);
+        if (major > (std::numeric_limits<unsigned long long>::max() - fraction) / scale) {
+            throw std::out_of_range("version is too large");
+        }
+        unsigned long long value = major * scale + fraction;
+        const unsigned long long step = scale / 10;
+        if (increment) {
+            if (value > std::numeric_limits<unsigned long long>::max() - step) {
+                throw std::out_of_range("version is too large");
+            }
+            value += step;
+        } else {
+            if (value < step) {
+                error = version + " cannot be decremented below zero";
+                return std::nullopt;
+            }
+            value -= step;
+        }
+
+        std::string fractionResult = std::to_string(value % scale);
+        if (fractionResult.size() < fractionText.size()) {
+            fractionResult.insert(0, fractionText.size() - fractionResult.size(), '0');
+        }
+        return "v" + std::to_string(value / scale) + "." + fractionResult;
+    } catch (const std::exception& exception) {
+        error = "cannot update " + version + ": " + exception.what();
+        return std::nullopt;
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
 bool rewriteScript(const fs::path& path, const std::vector<std::string>& lines, std::string& error) {
     struct stat details {};
     if (::stat(path.c_str(), &details) != 0) {
@@ -912,9 +1068,9 @@ bool editExistingScript(std::string& error) {
     }
 
     const auto type = selectOption("Edit action or block to add",
-        {"Hum Confirm", "Check Hum Confirm Status", "All or Nothing", "Git Pull Basic",
-         "Git Last Commit Show", "Hum Choose", "Hum Input", "Hum File Picker", "Hum Style",
-         "Hum Write", "Hum Spin"},
+        {"Hum Confirm", "Check Hum Confirm Status", "Update Script Version", "All or Nothing",
+         "Git Pull Basic", "Git Last Commit Show", "Hum Choose", "Hum Input", "Hum File Picker",
+         "Hum Style", "Hum Write", "Hum Spin"},
         "Hum Confirm");
     if (type == "Check Hum Confirm Status") {
         const bool hasHumConfirmation = std::any_of(lines.begin(), lines.end(),
@@ -937,6 +1093,39 @@ bool editExistingScript(std::string& error) {
         std::cout << "Before: " << original << '\n'
                   << "After:  " << lines[*selectedLine] << "\n\n";
         if (!confirm("Update this Hum confirmation in " + path.string() + "?")) {
+            error = "edit cancelled";
+            return false;
+        }
+        return rewriteScript(path, lines, error);
+    }
+    if (type == "Update Script Version") {
+        const auto occurrences = findVersionOccurrences(lines);
+        if (occurrences.empty()) {
+            error = "no v<number>.<number> versions were found in " + path.string();
+            return false;
+        }
+        const auto occurrence = selectVersionOccurrence(lines, occurrences);
+        if (!occurrence) {
+            error = "edit cancelled";
+            return false;
+        }
+        const auto operation = selectOption("Version change",
+            {"Increment (+0.1)", "Decrement (-0.1)", "Cancel"}, "Increment (+0.1)");
+        if (operation == "Cancel") {
+            error = "edit cancelled";
+            return false;
+        }
+        const auto updatedVersion = adjustVersion(
+            occurrence->value, operation == "Increment (+0.1)", error);
+        if (!updatedVersion) {
+            return false;
+        }
+        const std::string original = lines[occurrence->line];
+        lines[occurrence->line].replace(occurrence->column, occurrence->length, *updatedVersion);
+        showStyled("Version preview", randomColour());
+        std::cout << "Before: " << original << '\n'
+                  << "After:  " << lines[occurrence->line] << "\n\n";
+        if (!confirm("Update this version in " + path.string() + "?")) {
             error = "edit cancelled";
             return false;
         }
@@ -1396,7 +1585,7 @@ void printUsage(const char* executable) {
               << "  -v, --version    Show the Kizuku version\n\n"
               << "Interactive workflows:\n"
               << "  Create new scripts       Generate themed build and Git helpers\n"
-              << "  Edit an existing script  Insert Hum blocks or update confirmation defaults\n"
+              << "  Edit an existing script  Insert blocks or update confirms and versions\n"
               << "  Restyle a script         Replace Hum hex colours with a selected theme\n"
               << "  Quit                     Exit without making changes\n\n"
               << "When Hum is available, Kizuku uses it for prompts, styling, confirmation,\n"

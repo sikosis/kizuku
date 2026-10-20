@@ -95,6 +95,12 @@ Choose **Check Hum Confirm Status** to list each source line containing a
 existing default option. Kizuku previews the exact before-and-after lines before
 changing the script.
 
+Choose **Update Script Version** to list version text such as `v0.2` with its
+source line and column. Select an occurrence, then increment or decrement it by
+exactly `0.1`. Decimal arithmetic is performed without floating-point rounding,
+the selected line is previewed before writing, and versions cannot be reduced
+below zero.
+
 ## Restyle an existing script
 
 Choose **Restyle an existing script**, select a shell script and then choose any
