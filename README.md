@@ -69,12 +69,14 @@ Choose **Edit an existing script** from Kizuku's opening menu. Kizuku can insert
 configured `hum confirm`, `hum choose`, `hum input`, `hum file`, `hum style`,
 `hum write`, or `hum spin` blocks into an existing script. The ready-made
 **Git Pull Basic** template adds a styled Update Code heading, a configurable
-default response, and a guarded `git pull` command. Generated Hum file pickers
-resolve the script's own directory and open there, so they continue to work
-when the project is moved. The **All or Nothing** template collects the commands
-from existing styled `==> Step` blocks and copies them into one confirmation
-block, allowing every command to run together or none to run. In directory
-pickers, the right-arrow key opens the highlighted folder and Enter selects it.
+default response, and a guarded `git pull` command. **Git Last Commit Show** adds
+`git show --name-status --oneline` at the selected source position. Generated
+Hum file pickers resolve the script's own directory and open there, so they
+continue to work when the project is moved. The **All or Nothing** template
+collects the commands from existing styled `==> Step` blocks and copies them
+into one confirmation block, allowing every command to run together or none to
+run. In directory pickers, the right-arrow key opens the highlighted folder and
+Enter selects it.
 Hum input defaults are displayed as placeholders, so they do not need to be
 deleted before typing. Hum confirm blocks ask whether **Yes** or **No** should
 be the default response, with **No** selected by default. After the block is
@@ -86,6 +88,12 @@ same insertion points are shown as a numbered list.
 Kizuku previews the block and asks for confirmation before editing. It writes
 through a temporary file, atomically replaces the original, and preserves the
 original file permissions.
+
+Choose **Check Hum Confirm Status** to list each source line containing a
+`hum confirm`, including its current default status. Select a line and choose
+**Yes** or **No** to add `--default=yes` or `--default=no`, or replace the
+existing default option. Kizuku previews the exact before-and-after lines before
+changing the script.
 
 ## Restyle an existing script
 

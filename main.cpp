@@ -23,7 +23,7 @@ namespace fs = std::filesystem;
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.24"
+#define KIZUKU_VERSION "0.26"
 #endif
 
 constexpr const char* kReset = "\033[0m";
@@ -489,6 +489,9 @@ std::vector<std::string> buildAllOrNothingSnippet(const std::vector<std::string>
 //---------------------------------------------------------------------------------------------------------------------------------//
 
 std::vector<std::string> buildHumSnippet(const std::string& type) {
+    if (type == "Git Last Commit Show") {
+        return {"git show --name-status --oneline"};
+    }
     if (type == "Git Pull Basic") {
         const auto defaultAnswer = selectOption("Default answer", {"No", "Yes"}, "No");
         return {"hum style --foreground \"#d4e09b\" --bold \"==> Step 1: Update Code\"",
@@ -654,6 +657,182 @@ std::optional<std::size_t> selectInsertionPoint(const std::vector<std::string>& 
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
+
+std::size_t findUnquotedOption(const std::string& line, const std::string& option,
+                               std::size_t start) {
+    bool insideSingleQuote = false;
+    bool insideDoubleQuote = false;
+    bool escaped = false;
+    for (std::size_t index = start; index + option.size() <= line.size(); ++index) {
+        const char character = line[index];
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (character == '\\' && !insideSingleQuote) {
+            escaped = true;
+            continue;
+        }
+        if (character == '\'' && !insideDoubleQuote) {
+            insideSingleQuote = !insideSingleQuote;
+            continue;
+        }
+        if (character == '"' && !insideSingleQuote) {
+            insideDoubleQuote = !insideDoubleQuote;
+            continue;
+        }
+        if (insideSingleQuote || insideDoubleQuote || line.compare(index, option.size(), option) != 0) {
+            continue;
+        }
+        const bool startsToken = index == 0 ||
+            std::isspace(static_cast<unsigned char>(line[index - 1]));
+        const std::size_t after = index + option.size();
+        const bool endsToken = after == line.size() || line[after] == '=' ||
+            std::isspace(static_cast<unsigned char>(line[after]));
+        if (startsToken && endsToken) {
+            return index;
+        }
+    }
+    return std::string::npos;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+bool isHumConfirmLine(const std::string& line) {
+    const auto firstCharacter = line.find_first_not_of(" \t");
+    return firstCharacter != std::string::npos && line[firstCharacter] != '#' &&
+           findUnquotedOption(line, "hum confirm", firstCharacter) != std::string::npos;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+std::string humConfirmDefaultStatus(const std::string& line) {
+    const auto command = findUnquotedOption(line, "hum confirm", 0);
+    if (command == std::string::npos) {
+        return "not set";
+    }
+    const auto option = findUnquotedOption(line, "--default", command);
+    if (option == std::string::npos) {
+        return "not set";
+    }
+
+    std::size_t valueStart = option + std::string("--default").size();
+    if (valueStart < line.size() && line[valueStart] == '=') {
+        ++valueStart;
+    } else {
+        while (valueStart < line.size() &&
+               std::isspace(static_cast<unsigned char>(line[valueStart]))) {
+            ++valueStart;
+        }
+    }
+    std::size_t valueEnd = valueStart;
+    while (valueEnd < line.size() &&
+           !std::isspace(static_cast<unsigned char>(line[valueEnd])) && line[valueEnd] != ';') {
+        ++valueEnd;
+    }
+    std::string value = line.substr(valueStart, valueEnd - valueStart);
+    if (value.size() >= 2 && ((value.front() == '"' && value.back() == '"') ||
+                              (value.front() == '\'' && value.back() == '\''))) {
+        value = value.substr(1, value.size() - 2);
+    }
+    return value.empty() ? "not set" : value;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+std::optional<std::size_t> selectHumConfirmLine(const std::vector<std::string>& lines) {
+    std::vector<std::size_t> matches;
+    for (std::size_t index = 0; index < lines.size(); ++index) {
+        if (isHumConfirmLine(lines[index])) {
+            matches.push_back(index);
+        }
+    }
+    if (matches.empty()) {
+        return std::nullopt;
+    }
+
+    if (gUseHum) {
+        constexpr const char* delimiter = "\t";
+        std::vector<std::string> arguments = {
+            "choose", "--header", "Select a Hum confirm to update:",
+            "--height", "15", "--label-delimiter", delimiter,
+        };
+        for (const auto index : matches) {
+            arguments.push_back("Line " + std::to_string(index + 1) + " [default: " +
+                                humConfirmDefaultStatus(lines[index]) + "] | " +
+                                insertionPreview(lines[index]) + delimiter + std::to_string(index));
+        }
+        arguments.push_back("Cancel" + std::string(delimiter) + "cancel");
+        const auto selection = captureHum(arguments);
+        if (!selection || *selection == "cancel") {
+            return std::nullopt;
+        }
+        try {
+            std::size_t consumed = 0;
+            const auto index = std::stoul(*selection, &consumed);
+            if (consumed == selection->size() && index < lines.size()) {
+                return index;
+            }
+        } catch (...) {
+        }
+        return std::nullopt;
+    }
+
+    showStyled("Hum confirm status", randomColour());
+    std::cout << "0 | Cancel\n";
+    for (std::size_t choice = 0; choice < matches.size(); ++choice) {
+        const auto index = matches[choice];
+        std::cout << choice + 1 << " | Line " << index + 1 << " [default: "
+                  << humConfirmDefaultStatus(lines[index]) << "] | "
+                  << insertionPreview(lines[index]) << '\n';
+    }
+    while (true) {
+        const auto selection = prompt("Confirmation to update");
+        if (selection == "0") {
+            return std::nullopt;
+        }
+        std::size_t choice = 0;
+        if (parseLineNumber(selection, matches.size(), choice)) {
+            return matches[choice - 1];
+        }
+        std::cout << "Enter a number from 0 to " << matches.size() << ".\n";
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+void setHumConfirmDefault(std::string& line, const std::string& answer) {
+    const auto command = findUnquotedOption(line, "hum confirm", 0);
+    const auto option = findUnquotedOption(line, "--default", command);
+    const std::string replacement = "--default=" + answer;
+    if (option != std::string::npos) {
+        std::size_t valueEnd = option + std::string("--default").size();
+        if (valueEnd < line.size() && line[valueEnd] == '=') {
+            ++valueEnd;
+        } else {
+            while (valueEnd < line.size() &&
+                   std::isspace(static_cast<unsigned char>(line[valueEnd]))) {
+                ++valueEnd;
+            }
+        }
+        while (valueEnd < line.size() &&
+               !std::isspace(static_cast<unsigned char>(line[valueEnd])) && line[valueEnd] != ';') {
+            ++valueEnd;
+        }
+        line.replace(option, valueEnd - option, replacement);
+        return;
+    }
+
+    const auto then = line.find("; then", command);
+    if (then != std::string::npos) {
+        line.insert(then, " " + replacement);
+        return;
+    }
+    const auto contentEnd = line.find_last_not_of(" \t");
+    line.insert(contentEnd == std::string::npos ? 0 : contentEnd + 1, " " + replacement);
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
 bool rewriteScript(const fs::path& path, const std::vector<std::string>& lines, std::string& error) {
     struct stat details {};
     if (::stat(path.c_str(), &details) != 0) {
@@ -732,10 +911,37 @@ bool editExistingScript(std::string& error) {
         return false;
     }
 
-    const auto type = selectOption("Block to add",
-        {"All or Nothing", "Git Pull Basic", "Hum Confirm", "Hum Choose", "Hum Input",
-         "Hum File Picker", "Hum Style", "Hum Write", "Hum Spin"},
+    const auto type = selectOption("Edit action or block to add",
+        {"Hum Confirm", "Check Hum Confirm Status", "All or Nothing", "Git Pull Basic",
+         "Git Last Commit Show", "Hum Choose", "Hum Input", "Hum File Picker", "Hum Style",
+         "Hum Write", "Hum Spin"},
         "Hum Confirm");
+    if (type == "Check Hum Confirm Status") {
+        const bool hasHumConfirmation = std::any_of(lines.begin(), lines.end(),
+            [](const std::string& scriptLine) {
+                return isHumConfirmLine(scriptLine);
+            });
+        if (!hasHumConfirmation) {
+            error = "no Hum confirm lines were found in " + path.string();
+            return false;
+        }
+        const auto selectedLine = selectHumConfirmLine(lines);
+        if (!selectedLine) {
+            error = "edit cancelled";
+            return false;
+        }
+        const auto defaultAnswer = selectOption("Default answer", {"No", "Yes"}, "No");
+        const std::string original = lines[*selectedLine];
+        setHumConfirmDefault(lines[*selectedLine], defaultAnswer == "Yes" ? "yes" : "no");
+        showStyled("Confirmation preview", randomColour());
+        std::cout << "Before: " << original << '\n'
+                  << "After:  " << lines[*selectedLine] << "\n\n";
+        if (!confirm("Update this Hum confirmation in " + path.string() + "?")) {
+            error = "edit cancelled";
+            return false;
+        }
+        return rewriteScript(path, lines, error);
+    }
     const auto snippet = type == "All or Nothing"
         ? buildAllOrNothingSnippet(lines) : buildHumSnippet(type);
     if (snippet.empty()) {
@@ -1190,7 +1396,7 @@ void printUsage(const char* executable) {
               << "  -v, --version    Show the Kizuku version\n\n"
               << "Interactive workflows:\n"
               << "  Create new scripts       Generate themed build and Git helpers\n"
-              << "  Edit an existing script  Insert configured Hum blocks at a source position\n"
+              << "  Edit an existing script  Insert Hum blocks or update confirmation defaults\n"
               << "  Restyle a script         Replace Hum hex colours with a selected theme\n"
               << "  Quit                     Exit without making changes\n\n"
               << "When Hum is available, Kizuku uses it for prompts, styling, confirmation,\n"

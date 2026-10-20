@@ -224,6 +224,15 @@ grep -Fq 'hum style --foreground "#d4e09b" --bold "==> Step 1: Update Code"' \
 grep -Fq 'if hum confirm "Git Pull?" --default=no; then' "$test_dir/edit-git-pull.sh"
 grep -Fq '    git pull' "$test_dir/edit-git-pull.sh"
 
+# Insert the ready-made command for displaying the last Git commit.
+printf '#!/bin/sh\n' > "$test_dir/edit-git-show.sh"
+chmod 750 "$test_dir/edit-git-show.sh"
+printf 'Edit an existing script\n%s/edit-git-show.sh\nGit Last Commit Show\n\ny\n' \
+    "$test_dir" | ./kizuku >/dev/null
+grep -Fq 'git show --name-status --oneline' "$test_dir/edit-git-show.sh"
+test -x "$test_dir/edit-git-show.sh"
+sh -n "$test_dir/edit-git-show.sh"
+
 # Collect every generated step command into one all-or-nothing confirmation.
 cp "$test_dir/build.sh" "$test_dir/edit-all-or-nothing.sh"
 printf 'Edit an existing script\n%s/edit-all-or-nothing.sh\nAll or Nothing\n\nNo\n\ny\n' \
@@ -280,6 +289,42 @@ grep -Fq 'project_directory=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)' \
     "$test_dir/edit-file-picker.sh"
 grep -Fq 'selected_directory=$(hum file --no-file --directory --header "Select a directory — Right arrow opens folders; Enter selects" "$project_directory")' \
     "$test_dir/edit-file-picker.sh"
+
+# List Hum confirmations, add a missing default, and replace an existing one.
+printf '%s\n' \
+    '#!/bin/sh' \
+    '# hum confirm "Comment only?"' \
+    'echo "hum confirm is text here"' \
+    'if hum confirm "First?"; then' \
+    '    echo first' \
+    'fi' \
+    'if hum confirm "Second?" --default=no; then' \
+    '    echo second' \
+    'fi' \
+    > "$test_dir/edit-confirm-status.sh"
+chmod 751 "$test_dir/edit-confirm-status.sh"
+confirm_status_output=$(printf 'Edit an existing script\n%s/edit-confirm-status.sh\nCheck Hum Confirm Status\n1\nNo\ny\n' \
+    "$test_dir" | ./kizuku)
+printf '%s\n' "$confirm_status_output" | grep -Fq '[default: not set]'
+grep -Fq 'if hum confirm "First?" --default=no; then' "$test_dir/edit-confirm-status.sh"
+printf 'Edit an existing script\n%s/edit-confirm-status.sh\nCheck Hum Confirm Status\n2\nYes\ny\n' \
+    "$test_dir" | ./kizuku >/dev/null
+grep -Fq 'if hum confirm "Second?" --default=yes; then' "$test_dir/edit-confirm-status.sh"
+test "$(grep -Fc -- '--default=' "$test_dir/edit-confirm-status.sh")" -eq 2
+grep -Fq '# hum confirm "Comment only?"' "$test_dir/edit-confirm-status.sh"
+grep -Fq 'echo "hum confirm is text here"' "$test_dir/edit-confirm-status.sh"
+test -x "$test_dir/edit-confirm-status.sh"
+sh -n "$test_dir/edit-confirm-status.sh"
+
+# A status check with no Hum confirmations fails without changing the file.
+printf '#!/bin/sh\necho "nothing to configure"\n' > "$test_dir/edit-confirm-status-empty.sh"
+cp "$test_dir/edit-confirm-status-empty.sh" "$test_dir/edit-confirm-status-empty.expected"
+if printf 'Edit an existing script\n%s/edit-confirm-status-empty.sh\nCheck Hum Confirm Status\n' \
+    "$test_dir" | ./kizuku >/dev/null 2>&1; then
+    echo "confirm status unexpectedly accepted a script without Hum confirmations" >&2
+    exit 1
+fi
+cmp "$test_dir/edit-confirm-status-empty.expected" "$test_dir/edit-confirm-status-empty.sh"
 
 version=$(tr -d '\r\n' < VERSION)
 test "$(./kizuku --version)" = "Kizuku v$version"
