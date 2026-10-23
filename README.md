@@ -85,6 +85,17 @@ Selecting a source line inserts the block immediately before that line; **End
 of script** appends it, and **Cancel** leaves the file alone. Without Hum, the
 same insertion points are shown as a numbered list.
 
+Pass a script directly on the command line to skip the opening menu and file
+picker:
+
+```sh
+kizuku ./build.sh
+```
+
+After each successful change, Kizuku asks whether to make another edit to the
+same script. Choosing Yes reloads the changed file before showing the Edit menu
+again.
+
 Kizuku previews the block and asks for confirmation before editing. It writes
 through a temporary file, atomically replaces the original, and preserves the
 original file permissions.

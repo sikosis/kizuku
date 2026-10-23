@@ -25,7 +25,7 @@ namespace fs = std::filesystem;
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.27"
+#define KIZUKU_VERSION "0.28"
 #endif
 
 constexpr const char* kReset = "\033[0m";
@@ -1030,20 +1030,10 @@ bool rewriteScript(const fs::path& path, const std::vector<std::string>& lines, 
     }
     return true;
 }
+//---------------------------------------------------------------------------------------------------------------------------------//
 
-bool editExistingScript(std::string& error) {
-    fs::path path;
-    if (gUseHum) {
-        const fs::path start = fs::current_path();
-        if (const auto selection = captureHum({"file", "--file", "--no-directory",
-                                               "--header", "Select a script to edit",
-                                               start.string()})) {
-            path = *selection;
-        }
-    }
-    if (path.empty()) {
-        path = prompt("Script to edit");
-    }
+
+bool editScriptOnce(const fs::path& path, std::string& error) {
     if (!fs::is_regular_file(path)) {
         error = path.string() + " is not a regular file";
         return false;
@@ -1166,6 +1156,38 @@ bool editExistingScript(std::string& error) {
     lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(*insertion),
                  addition.begin(), addition.end());
     return rewriteScript(path, lines, error);
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+bool editExistingScript(fs::path path, std::string& error) {
+    if (path.empty() && gUseHum) {
+        const fs::path start = fs::current_path();
+        if (const auto selection = captureHum({"file", "--file", "--no-directory",
+                                               "--header", "Select a script to edit",
+                                               start.string()})) {
+            path = *selection;
+        }
+    }
+    if (path.empty()) {
+        path = prompt("Script to edit");
+    }
+
+    bool changed = false;
+    while (true) {
+        error.clear();
+        if (!editScriptOnce(path, error)) {
+            if (changed && error == "edit cancelled") {
+                error.clear();
+                return true;
+            }
+            return false;
+        }
+        changed = true;
+        if (!confirm("Make another edit to " + path.string() + "?", false)) {
+            return true;
+        }
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
@@ -1579,10 +1601,12 @@ WizardResult runWizard() {
 void printUsage(const char* executable) {
     std::cout << kName << " v" << kVersion << "\n"
               << "Haiku command-line helper for generating interactive build and Git scripts.\n\n"
-              << "Usage: " << executable << " [OPTION]\n\n"
+              << "Usage: " << executable << " [OPTION | SCRIPT]\n\n"
               << "Options:\n"
               << "  -h, --help       Show this help\n"
               << "  -v, --version    Show the Kizuku version\n\n"
+              << "Arguments:\n"
+              << "  SCRIPT           Open this file directly in the Edit workflow\n\n"
               << "Interactive workflows:\n"
               << "  Create new scripts       Generate themed build and Git helpers\n"
               << "  Edit an existing script  Insert blocks or update confirms and versions\n"
@@ -1610,6 +1634,18 @@ int main(int argc, char** argv) {
         } else if (argc == 2 && (std::string(argv[1]) == "--version" || std::string(argv[1]) == "-v")) {
             std::cout << kName << " v" << kVersion << "\n";
             return 0;
+        } else if (argc == 2 && std::string(argv[1]).rfind("-", 0) != 0) {
+            std::string editError;
+            if (!editExistingScript(fs::path(argv[1]), editError)) {
+                if (editError != "edit cancelled") {
+                    std::cerr << "kizuku: " << editError << "\n";
+                    return 1;
+                }
+                std::cout << "No changes made.\n";
+                return 0;
+            }
+            showStyled("Script updated successfully", randomColour());
+            return 0;
         } else if (argc != 1) {
             printUsage(argv[0]);
             return 2;
@@ -1627,7 +1663,7 @@ int main(int argc, char** argv) {
             }
             if (action == "Edit an existing script") {
                 std::string editError;
-                if (!editExistingScript(editError)) {
+                if (!editExistingScript({}, editError)) {
                     if (editError != "edit cancelled") {
                         std::cerr << "kizuku: " << editError << "\n";
                         return 1;
