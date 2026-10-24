@@ -138,14 +138,44 @@ make install
 
 Use `DESTDIR` when creating a package staging tree.
 
+## Build an HPKG for GitHub
+
+Run the packaging command on Haiku:
+
+```sh
+make hpkg
+```
+
+This performs a clean build, runs the test suite, stages the executable and
+documentation, and uses Haiku's native `package` command to create these files:
+
+```text
+dist/kizuku-<version>-1-<architecture>.hpkg
+dist/kizuku-<version>-1-<architecture>.hpkg.sha256
+```
+
+The architecture is detected with `getarch -p`. The package installs Kizuku as
+`/boot/system/bin/kizuku`. Upload the HPKG and its checksum to the matching
+GitHub release; this workflow does not require a HaikuPorts recipe.
+
+Set a higher package revision when rebuilding the same application version, or
+override the packager identity if needed:
+
+```sh
+PACKAGE_REVISION=2 PACKAGER="Your Name <you@example.com>" make hpkg
+```
+
+Generated release files are kept in `dist/` and are ignored by Git.
+
 ## Test
 
 ```sh
 make test
 ```
 
-The test drives the wizard, checks that its generated build file is executable,
-and validates its Bash syntax.
+The tests drive the wizard, check that its generated build file is executable,
+validate its Bash syntax, and exercise the HPKG staging and metadata workflow
+with a test package command.
 
 ## Author
 
