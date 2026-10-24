@@ -224,6 +224,36 @@ grep -Fq 'hum style --foreground "#d4e09b" --bold "==> Step 1: Update Code"' \
 grep -Fq 'if hum confirm "Git Pull?" --default=no; then' "$test_dir/edit-git-pull.sh"
 grep -Fq '    git pull' "$test_dir/edit-git-pull.sh"
 
+# Add a Git pull spinner and last-commit summary with the default title.
+printf '#!/bin/sh\nif true; then\n    git pull\nfi\n' > "$test_dir/edit-fancy-git-pull.sh"
+printf 'Edit an existing script\n%s/edit-fancy-git-pull.sh\nFancy Git Pull\n1\n\ny\nn\n' \
+    "$test_dir" | ./kizuku >/dev/null
+sh -n "$test_dir/edit-fancy-git-pull.sh"
+grep -Fq '    hum spin --title "Updating Git" -- git pull' \
+    "$test_dir/edit-fancy-git-pull.sh"
+grep -Fq '    git show --name-status --oneline' "$test_dir/edit-fancy-git-pull.sh"
+test "$(grep -Fc 'git pull' "$test_dir/edit-fancy-git-pull.sh")" -eq 1
+
+# The Fancy Git Pull spinner also accepts a custom title.
+printf '#!/bin/sh\ngit pull\n' > "$test_dir/edit-fancy-git-pull-custom.sh"
+printf 'Fancy Git Pull\n1\nFetching changes\ny\nn\n' \
+    | ./kizuku "$test_dir/edit-fancy-git-pull-custom.sh" >/dev/null
+sh -n "$test_dir/edit-fancy-git-pull-custom.sh"
+grep -Fq 'hum spin --title "Fetching changes" -- git pull' \
+    "$test_dir/edit-fancy-git-pull-custom.sh"
+
+# Refuse Fancy Git Pull when there is no standalone command to replace.
+printf '#!/bin/sh\necho "git pull"\n# git pull\n' > "$test_dir/edit-fancy-git-pull-empty.sh"
+cp "$test_dir/edit-fancy-git-pull-empty.sh" \
+    "$test_dir/edit-fancy-git-pull-empty.expected"
+if printf 'Fancy Git Pull\n' \
+    | ./kizuku "$test_dir/edit-fancy-git-pull-empty.sh" >/dev/null 2>&1; then
+    echo "Fancy Git Pull unexpectedly accepted a script without a standalone git pull" >&2
+    exit 1
+fi
+cmp "$test_dir/edit-fancy-git-pull-empty.expected" \
+    "$test_dir/edit-fancy-git-pull-empty.sh"
+
 # Insert the ready-made command for displaying the last Git commit.
 printf '#!/bin/sh\n' > "$test_dir/edit-git-show.sh"
 chmod 750 "$test_dir/edit-git-show.sh"

@@ -69,10 +69,15 @@ Choose **Edit an existing script** from Kizuku's opening menu. Kizuku can insert
 configured `hum confirm`, `hum choose`, `hum input`, `hum file`, `hum style`,
 `hum write`, or `hum spin` blocks into an existing script. The ready-made
 **Git Pull Basic** template adds a styled Update Code heading, a configurable
-default response, and a guarded `git pull` command. **Git Last Commit Show** adds
-`git show --name-status --oneline` at the selected source position. Generated
-Hum file pickers resolve the script's own directory and open there, so they
-continue to work when the project is moved. The **All or Nothing** template
+default response, and a guarded `git pull` command. **Fancy Git Pull** runs
+an existing standalone `git pull` inside a Hum spinner and then displays the
+last commit's changed files. It lets you select which matching source line to
+replace, preserves its indentation, and uses a configurable spinner title that
+defaults to `Updating Git`.
+**Git Last Commit Show** adds `git show --name-status --oneline` at the selected
+source position. Generated Hum file pickers resolve the script's own directory
+and open there, so they continue to work when the project is moved. The
+**All or Nothing** template
 collects the commands from existing styled `==> Step` blocks and copies them
 into one confirmation block, allowing every command to run together or none to
 run. In directory pickers, the right-arrow key opens the highlighted folder and

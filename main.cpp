@@ -25,7 +25,7 @@ namespace fs = std::filesystem;
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.29"
+#define KIZUKU_VERSION "0.3"
 #endif
 
 constexpr const char* kReset = "\033[0m";
@@ -494,6 +494,11 @@ std::vector<std::string> buildHumSnippet(const std::string& type) {
     if (type == "Git Last Commit Show") {
         return {"git show --name-status --oneline"};
     }
+    if (type == "Fancy Git Pull") {
+        const auto title = prompt("Spinner title", "Updating Git");
+        return {"hum spin --title " + shellDoubleQuoted(title) + " -- git pull",
+                "git show --name-status --oneline"};
+    }
     if (type == "Git Pull Basic") {
         const auto defaultAnswer = selectOption("Default answer", {"No", "Yes"}, "No");
         return {"hum style --foreground \"#d4e09b\" --bold \"==> Step 1: Update Code\"",
@@ -655,6 +660,73 @@ std::optional<std::size_t> selectInsertionPoint(const std::vector<std::string>& 
             return choice - 1;
         }
         std::cout << "Enter a number from 0 to " << endChoice << ".\n";
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+bool isStandardGitPullLine(const std::string& line) {
+    return trim(line) == "git pull";
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+std::optional<std::size_t> selectGitPullLine(const std::vector<std::string>& lines) {
+    std::vector<std::size_t> matches;
+    for (std::size_t index = 0; index < lines.size(); ++index) {
+        if (isStandardGitPullLine(lines[index])) {
+            matches.push_back(index);
+        }
+    }
+    if (matches.empty()) {
+        return std::nullopt;
+    }
+
+    if (gUseHum) {
+        constexpr const char* delimiter = "\t";
+        std::vector<std::string> arguments = {
+            "choose", "--header", "Select the git pull line to replace:",
+            "--height", "15", "--label-delimiter", delimiter,
+        };
+        for (const auto index : matches) {
+            arguments.push_back("Line " + std::to_string(index + 1) + " | " +
+                                insertionPreview(lines[index]) + delimiter +
+                                std::to_string(index));
+        }
+        arguments.push_back("Cancel" + std::string(delimiter) + "cancel");
+        const auto selection = captureHum(arguments);
+        if (!selection || *selection == "cancel") {
+            return std::nullopt;
+        }
+        try {
+            std::size_t consumed = 0;
+            const auto index = std::stoul(*selection, &consumed);
+            if (consumed == selection->size() && index < lines.size() &&
+                isStandardGitPullLine(lines[index])) {
+                return index;
+            }
+        } catch (...) {
+        }
+        return std::nullopt;
+    }
+
+    showStyled("Standard Git pull lines", randomColour());
+    std::cout << "0 | Cancel\n";
+    for (std::size_t choice = 0; choice < matches.size(); ++choice) {
+        const auto index = matches[choice];
+        std::cout << choice + 1 << " | Line " << index + 1 << " | "
+                  << insertionPreview(lines[index]) << '\n';
+    }
+    while (true) {
+        const auto selection = prompt("Git pull line to replace");
+        if (selection == "0") {
+            return std::nullopt;
+        }
+        std::size_t choice = 0;
+        if (parseLineNumber(selection, matches.size(), choice)) {
+            return matches[choice - 1];
+        }
+        std::cout << "Enter a number from 0 to " << matches.size() << ".\n";
     }
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
@@ -1059,8 +1131,8 @@ bool editScriptOnce(const fs::path& path, std::string& error) {
 
     const auto type = selectOption("Edit action or block to add",
         {"Hum Confirm", "Check Hum Confirm Status", "Update Script Version", "All or Nothing",
-         "Git Pull Basic", "Git Last Commit Show", "Hum Choose", "Hum Input", "Hum File Picker",
-         "Hum Style", "Hum Write", "Hum Spin"},
+         "Git Pull Basic", "Fancy Git Pull", "Git Last Commit Show", "Hum Choose", "Hum Input",
+         "Hum File Picker", "Hum Style", "Hum Write", "Hum Spin"},
         "Hum Confirm");
     if (type == "Check Hum Confirm Status") {
         const bool hasHumConfirmation = std::any_of(lines.begin(), lines.end(),
@@ -1119,6 +1191,36 @@ bool editScriptOnce(const fs::path& path, std::string& error) {
             error = "edit cancelled";
             return false;
         }
+        return rewriteScript(path, lines, error);
+    }
+    if (type == "Fancy Git Pull") {
+        const bool hasStandardGitPull = std::any_of(lines.begin(), lines.end(),
+            [](const std::string& scriptLine) {
+                return isStandardGitPullLine(scriptLine);
+            });
+        if (!hasStandardGitPull) {
+            error = "no standalone git pull lines were found in " + path.string();
+            return false;
+        }
+        const auto selectedLine = selectGitPullLine(lines);
+        if (!selectedLine) {
+            error = "edit cancelled";
+            return false;
+        }
+        const auto snippet = buildHumSnippet(type);
+        const auto contentStart = lines[*selectedLine].find_first_not_of(" \t");
+        const std::string indentation = lines[*selectedLine].substr(0, contentStart);
+        showStyled("Block preview", randomColour());
+        std::cout << "Before: " << lines[*selectedLine] << '\n'
+                  << "After:  " << indentation << snippet[0] << '\n'
+                  << "        " << indentation << snippet[1] << "\n\n";
+        if (!confirm("Replace this git pull in " + path.string() + "?")) {
+            error = "edit cancelled";
+            return false;
+        }
+        lines[*selectedLine] = indentation + snippet[0];
+        lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(*selectedLine + 1),
+                     indentation + snippet[1]);
         return rewriteScript(path, lines, error);
     }
     const auto snippet = type == "All or Nothing"
