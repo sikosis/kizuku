@@ -117,6 +117,11 @@ exactly `0.1`. Decimal arithmetic is performed without floating-point rounding,
 the selected line is previewed before writing, and versions cannot be reduced
 below zero.
 
+Choose **Output to Log** to select a command line and append
+` > output.log 2>&1`. This sends both the command's standard output and standard
+error to `output.log`. Blank lines and comments are omitted from the selector,
+and Kizuku previews the changed line before updating the script.
+
 ## Restyle an existing script
 
 Choose **Restyle an existing script**, select a shell script and then choose any

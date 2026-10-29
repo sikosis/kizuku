@@ -25,7 +25,7 @@ namespace fs = std::filesystem;
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.3"
+#define KIZUKU_VERSION "0.31"
 #endif
 
 constexpr const char* kReset = "\033[0m";
@@ -732,6 +732,74 @@ std::optional<std::size_t> selectGitPullLine(const std::vector<std::string>& lin
 //---------------------------------------------------------------------------------------------------------------------------------//
 
 
+bool isOutputLogCandidate(const std::string& line) {
+    const auto firstCharacter = line.find_first_not_of(" \t");
+    return firstCharacter != std::string::npos && line[firstCharacter] != '#';
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+std::optional<std::size_t> selectOutputLogLine(const std::vector<std::string>& lines) {
+    std::vector<std::size_t> matches;
+    for (std::size_t index = 0; index < lines.size(); ++index) {
+        if (isOutputLogCandidate(lines[index])) {
+            matches.push_back(index);
+        }
+    }
+    if (matches.empty()) {
+        return std::nullopt;
+    }
+
+    if (gUseHum) {
+        constexpr const char* delimiter = "\t";
+        std::vector<std::string> arguments = {
+            "choose", "--header", "Select a command to send to output.log:",
+            "--height", "15", "--label-delimiter", delimiter,
+        };
+        for (const auto index : matches) {
+            arguments.push_back("Line " + std::to_string(index + 1) + " | " +
+                                insertionPreview(lines[index]) + delimiter +
+                                std::to_string(index));
+        }
+        arguments.push_back("Cancel" + std::string(delimiter) + "cancel");
+        const auto selection = captureHum(arguments);
+        if (!selection || *selection == "cancel") {
+            return std::nullopt;
+        }
+        try {
+            std::size_t consumed = 0;
+            const auto index = std::stoul(*selection, &consumed);
+            if (consumed == selection->size() && index < lines.size() &&
+                isOutputLogCandidate(lines[index])) {
+                return index;
+            }
+        } catch (...) {
+        }
+        return std::nullopt;
+    }
+
+    showStyled("Commands available for logging", randomColour());
+    std::cout << "0 | Cancel\n";
+    for (std::size_t choice = 0; choice < matches.size(); ++choice) {
+        const auto index = matches[choice];
+        std::cout << choice + 1 << " | Line " << index + 1 << " | "
+                  << insertionPreview(lines[index]) << '\n';
+    }
+    while (true) {
+        const auto selection = prompt("Command to send to output.log");
+        if (selection == "0") {
+            return std::nullopt;
+        }
+        std::size_t choice = 0;
+        if (parseLineNumber(selection, matches.size(), choice)) {
+            return matches[choice - 1];
+        }
+        std::cout << "Enter a number from 0 to " << matches.size() << ".\n";
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
 std::size_t findUnquotedOption(const std::string& line, const std::string& option,
                                std::size_t start) {
     bool insideSingleQuote = false;
@@ -1130,9 +1198,9 @@ bool editScriptOnce(const fs::path& path, std::string& error) {
     }
 
     const auto type = selectOption("Edit action or block to add",
-        {"Hum Confirm", "Check Hum Confirm Status", "Update Script Version", "All or Nothing",
-         "Git Pull Basic", "Fancy Git Pull", "Git Last Commit Show", "Hum Choose", "Hum Input",
-         "Hum File Picker", "Hum Style", "Hum Write", "Hum Spin"},
+        {"Hum Confirm", "Check Hum Confirm Status", "Update Script Version", "Output to Log",
+         "All or Nothing", "Git Pull Basic", "Fancy Git Pull", "Git Last Commit Show",
+         "Hum Choose", "Hum Input", "Hum File Picker", "Hum Style", "Hum Write", "Hum Spin"},
         "Hum Confirm");
     if (type == "Check Hum Confirm Status") {
         const bool hasHumConfirmation = std::any_of(lines.begin(), lines.end(),
@@ -1188,6 +1256,32 @@ bool editScriptOnce(const fs::path& path, std::string& error) {
         std::cout << "Before: " << original << '\n'
                   << "After:  " << lines[occurrence->line] << "\n\n";
         if (!confirm("Update this version in " + path.string() + "?")) {
+            error = "edit cancelled";
+            return false;
+        }
+        return rewriteScript(path, lines, error);
+    }
+    if (type == "Output to Log") {
+        const bool hasCandidate = std::any_of(lines.begin(), lines.end(),
+            [](const std::string& scriptLine) {
+                return isOutputLogCandidate(scriptLine);
+            });
+        if (!hasCandidate) {
+            error = "no command lines were found in " + path.string();
+            return false;
+        }
+        const auto selectedLine = selectOutputLogLine(lines);
+        if (!selectedLine) {
+            error = "edit cancelled";
+            return false;
+        }
+        const std::string original = lines[*selectedLine];
+        const auto contentEnd = lines[*selectedLine].find_last_not_of(" \t");
+        lines[*selectedLine].insert(contentEnd + 1, " > output.log 2>&1");
+        showStyled("Logging preview", randomColour());
+        std::cout << "Before: " << original << '\n'
+                  << "After:  " << lines[*selectedLine] << "\n\n";
+        if (!confirm("Send this command's output to output.log in " + path.string() + "?")) {
             error = "edit cancelled";
             return false;
         }

@@ -254,6 +254,26 @@ fi
 cmp "$test_dir/edit-fancy-git-pull-empty.expected" \
     "$test_dir/edit-fancy-git-pull-empty.sh"
 
+# Append valid combined output and error logging to a selected command.
+printf '#!/bin/sh\n# make should stay untouched\nmake -j4   \n' > "$test_dir/edit-output-log.sh"
+chmod 740 "$test_dir/edit-output-log.sh"
+printf 'Output to Log\n1\ny\nn\n' \
+    | ./kizuku "$test_dir/edit-output-log.sh" >/dev/null
+test -x "$test_dir/edit-output-log.sh"
+sh -n "$test_dir/edit-output-log.sh"
+grep -Fq 'make -j4 > output.log 2>&1' "$test_dir/edit-output-log.sh"
+grep -Fq '# make should stay untouched' "$test_dir/edit-output-log.sh"
+
+# Refuse Output to Log when a script contains only blank lines and comments.
+printf '#!/bin/sh\n\n# Nothing to run\n' > "$test_dir/edit-output-log-empty.sh"
+cp "$test_dir/edit-output-log-empty.sh" "$test_dir/edit-output-log-empty.expected"
+if printf 'Output to Log\n' \
+    | ./kizuku "$test_dir/edit-output-log-empty.sh" >/dev/null 2>&1; then
+    echo "Output to Log unexpectedly accepted a script without command lines" >&2
+    exit 1
+fi
+cmp "$test_dir/edit-output-log-empty.expected" "$test_dir/edit-output-log-empty.sh"
+
 # Insert the ready-made command for displaying the last Git commit.
 printf '#!/bin/sh\n' > "$test_dir/edit-git-show.sh"
 chmod 750 "$test_dir/edit-git-show.sh"
