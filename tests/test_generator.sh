@@ -422,6 +422,46 @@ if printf 'Edit an existing script\n%s/edit-version-empty.sh\nUpdate Script Vers
 fi
 cmp "$test_dir/edit-version-empty.expected" "$test_dir/edit-version-empty.sh"
 
+# Replace only the project-name portion of a generated Hum builder title.
+printf '%s\n' \
+    '#!/bin/sh' \
+    'hum style --border rounded --foreground 88 --padding "1 2" --margin "1 0" --bold "Alpha Tool Builder v0.2"' \
+    'hum style --bold "Ordinary heading"' \
+    > "$test_dir/edit-title.sh"
+chmod 751 "$test_dir/edit-title.sh"
+printf 'Update Title\n1\nRelease Helper\ny\nn\n' \
+    | ./kizuku "$test_dir/edit-title.sh" >/dev/null
+grep -Fq 'hum style --border rounded --foreground 88 --padding "1 2" --margin "1 0" --bold "Release Helper Builder v0.2"' \
+    "$test_dir/edit-title.sh"
+grep -Fq 'hum style --bold "Ordinary heading"' "$test_dir/edit-title.sh"
+test -x "$test_dir/edit-title.sh"
+sh -n "$test_dir/edit-title.sh"
+
+# Pressing Enter accepts the current project name shown as the placeholder.
+printf 'Update Title\n1\n\ny\nn\n' \
+    | ./kizuku "$test_dir/edit-title.sh" >/dev/null
+grep -Fq 'hum style --border rounded --foreground 88 --padding "1 2" --margin "1 0" --bold "Release Helper Builder v0.2"' \
+    "$test_dir/edit-title.sh"
+
+# Escape shell-sensitive characters while retaining the title version.
+printf '#!/bin/sh\nhum style --bold "Old Name Builder v1.4"\n' \
+    > "$test_dir/edit-title-escaped.sh"
+printf 'Update Title\n1\nNew $Tool\ny\nn\n' \
+    | ./kizuku "$test_dir/edit-title-escaped.sh" >/dev/null
+grep -Fq 'hum style --bold "New \$Tool Builder v1.4"' \
+    "$test_dir/edit-title-escaped.sh"
+sh -n "$test_dir/edit-title-escaped.sh"
+
+# Refuse Update Title when no generated builder title is present.
+printf '#!/bin/sh\nhum style --bold "Ordinary heading"\n' > "$test_dir/edit-title-empty.sh"
+cp "$test_dir/edit-title-empty.sh" "$test_dir/edit-title-empty.expected"
+if printf 'Update Title\n' \
+    | ./kizuku "$test_dir/edit-title-empty.sh" >/dev/null 2>&1; then
+    echo "title updater unexpectedly accepted a script without a builder title" >&2
+    exit 1
+fi
+cmp "$test_dir/edit-title-empty.expected" "$test_dir/edit-title-empty.sh"
+
 version=$(tr -d '\r\n' < VERSION)
 test "$(./kizuku --version)" = "Kizuku v$version"
 ./kizuku --help | grep -Fq "Kizuku v$version"

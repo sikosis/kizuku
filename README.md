@@ -117,6 +117,12 @@ exactly `0.1`. Decimal arithmetic is performed without floating-point rounding,
 the selected line is previewed before writing, and versions cannot be reduced
 below zero.
 
+Choose **Update Title** to find styled Hum titles ending in `Builder v<version>`.
+Select a matching title and enter a new project name; the current name is shown
+as the placeholder and is retained when Enter is pressed. Kizuku changes only
+the project-name portion, preserving the Hum styling, `Builder` label, and
+version.
+
 Choose **Output to Log** to select a command line and append
 ` > output.log 2>&1`. This sends both the command's standard output and standard
 error to `output.log`. Blank lines and comments are omitted from the selector,

@@ -25,7 +25,7 @@ namespace fs = std::filesystem;
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.31"
+#define KIZUKU_VERSION "0.32"
 #endif
 
 constexpr const char* kReset = "\033[0m";
@@ -1129,6 +1129,164 @@ std::optional<std::string> adjustVersion(const std::string& version, bool increm
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
+
+struct BuilderTitleOccurrence {
+    std::size_t line;
+    std::size_t column;
+    std::size_t length;
+    std::string projectName;
+    std::string suffix;
+};
+
+bool validBuilderVersion(const std::string& value) {
+    if (value.size() < 4 || value.front() != 'v') {
+        return false;
+    }
+    std::size_t cursor = 1;
+    const std::size_t majorStart = cursor;
+    while (cursor < value.size() && std::isdigit(static_cast<unsigned char>(value[cursor]))) {
+        ++cursor;
+    }
+    if (cursor == majorStart || cursor >= value.size() || value[cursor] != '.') {
+        return false;
+    }
+    ++cursor;
+    const std::size_t fractionStart = cursor;
+    while (cursor < value.size() && std::isdigit(static_cast<unsigned char>(value[cursor]))) {
+        ++cursor;
+    }
+    return cursor == value.size() && cursor > fractionStart;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+std::string unescapeShellDoubleQuotedContent(const std::string& value) {
+    std::string result;
+    result.reserve(value.size());
+    for (std::size_t index = 0; index < value.size(); ++index) {
+        if (value[index] == '\\' && index + 1 < value.size() &&
+            (value[index + 1] == '"' || value[index + 1] == '\\' ||
+             value[index + 1] == '$' || value[index + 1] == '`')) {
+            ++index;
+        }
+        result.push_back(value[index]);
+    }
+    return result;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+std::vector<BuilderTitleOccurrence> findBuilderTitles(const std::vector<std::string>& lines) {
+    std::vector<BuilderTitleOccurrence> occurrences;
+    constexpr const char* marker = " Builder v";
+    for (std::size_t lineIndex = 0; lineIndex < lines.size(); ++lineIndex) {
+        const auto& line = lines[lineIndex];
+        const auto command = findUnquotedOption(line, "hum style", 0);
+        if (command == std::string::npos) {
+            continue;
+        }
+        const auto bold = findUnquotedOption(line, "--bold", command);
+        if (bold == std::string::npos) {
+            continue;
+        }
+        std::size_t quoteStart = bold + std::string("--bold").size();
+        while (quoteStart < line.size() &&
+               std::isspace(static_cast<unsigned char>(line[quoteStart]))) {
+            ++quoteStart;
+        }
+        if (quoteStart >= line.size() || line[quoteStart] != '"') {
+            continue;
+        }
+        std::size_t quoteEnd = quoteStart + 1;
+        bool escaped = false;
+        for (; quoteEnd < line.size(); ++quoteEnd) {
+            if (escaped) {
+                escaped = false;
+            } else if (line[quoteEnd] == '\\') {
+                escaped = true;
+            } else if (line[quoteEnd] == '"') {
+                break;
+            }
+        }
+        if (quoteEnd >= line.size()) {
+            continue;
+        }
+        const std::string content = line.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
+        const auto markerPosition = content.rfind(marker);
+        if (markerPosition == std::string::npos || markerPosition == 0) {
+            continue;
+        }
+        const std::string version = content.substr(markerPosition + 9);
+        if (!validBuilderVersion(version)) {
+            continue;
+        }
+        occurrences.push_back({lineIndex, quoteStart, quoteEnd - quoteStart + 1,
+            unescapeShellDoubleQuotedContent(content.substr(0, markerPosition)),
+            content.substr(markerPosition)});
+    }
+    return occurrences;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+std::optional<BuilderTitleOccurrence> selectBuilderTitle(
+        const std::vector<std::string>& lines,
+        const std::vector<BuilderTitleOccurrence>& occurrences) {
+    if (occurrences.empty()) {
+        return std::nullopt;
+    }
+    if (gUseHum) {
+        constexpr const char* delimiter = "\t";
+        std::vector<std::string> arguments = {
+            "choose", "--header", "Select a builder title to update:",
+            "--height", "15", "--label-delimiter", delimiter,
+        };
+        for (std::size_t choice = 0; choice < occurrences.size(); ++choice) {
+            const auto& occurrence = occurrences[choice];
+            arguments.push_back("Line " + std::to_string(occurrence.line + 1) + " [" +
+                                occurrence.projectName + "] | " +
+                                insertionPreview(lines[occurrence.line]) + delimiter +
+                                std::to_string(choice));
+        }
+        arguments.push_back("Cancel" + std::string(delimiter) + "cancel");
+        const auto selection = captureHum(arguments);
+        if (!selection || *selection == "cancel") {
+            return std::nullopt;
+        }
+        try {
+            std::size_t consumed = 0;
+            const auto choice = std::stoul(*selection, &consumed);
+            if (consumed == selection->size() && choice < occurrences.size()) {
+                return occurrences[choice];
+            }
+        } catch (...) {
+        }
+        return std::nullopt;
+    }
+
+    showStyled("Builder titles", randomColour());
+    std::cout << "0 | Cancel\n";
+    for (std::size_t choice = 0; choice < occurrences.size(); ++choice) {
+        const auto& occurrence = occurrences[choice];
+        std::cout << choice + 1 << " | Line " << occurrence.line + 1 << " ["
+                  << occurrence.projectName << "] | "
+                  << insertionPreview(lines[occurrence.line]) << '\n';
+    }
+    while (true) {
+        const auto selection = prompt("Builder title to update");
+        if (selection == "0") {
+            return std::nullopt;
+        }
+        std::size_t choice = 0;
+        if (parseLineNumber(selection, occurrences.size(), choice)) {
+            return occurrences[choice - 1];
+        }
+        std::cout << "Enter a number from 0 to " << occurrences.size() << ".\n";
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
 bool rewriteScript(const fs::path& path, const std::vector<std::string>& lines, std::string& error) {
     struct stat details {};
     if (::stat(path.c_str(), &details) != 0) {
@@ -1198,9 +1356,10 @@ bool editScriptOnce(const fs::path& path, std::string& error) {
     }
 
     const auto type = selectOption("Edit action or block to add",
-        {"Hum Confirm", "Check Hum Confirm Status", "Update Script Version", "Output to Log",
-         "All or Nothing", "Git Pull Basic", "Fancy Git Pull", "Git Last Commit Show",
-         "Hum Choose", "Hum Input", "Hum File Picker", "Hum Style", "Hum Write", "Hum Spin"},
+        {"Hum Confirm", "Check Hum Confirm Status", "Update Script Version", "Update Title",
+         "Output to Log", "All or Nothing", "Git Pull Basic", "Fancy Git Pull",
+         "Git Last Commit Show", "Hum Choose", "Hum Input", "Hum File Picker", "Hum Style",
+         "Hum Write", "Hum Spin"},
         "Hum Confirm");
     if (type == "Check Hum Confirm Status") {
         const bool hasHumConfirmation = std::any_of(lines.begin(), lines.end(),
@@ -1256,6 +1415,30 @@ bool editScriptOnce(const fs::path& path, std::string& error) {
         std::cout << "Before: " << original << '\n'
                   << "After:  " << lines[occurrence->line] << "\n\n";
         if (!confirm("Update this version in " + path.string() + "?")) {
+            error = "edit cancelled";
+            return false;
+        }
+        return rewriteScript(path, lines, error);
+    }
+    if (type == "Update Title") {
+        const auto occurrences = findBuilderTitles(lines);
+        if (occurrences.empty()) {
+            error = "no Hum builder titles were found in " + path.string();
+            return false;
+        }
+        const auto occurrence = selectBuilderTitle(lines, occurrences);
+        if (!occurrence) {
+            error = "edit cancelled";
+            return false;
+        }
+        const auto projectName = prompt("New project title", occurrence->projectName);
+        const std::string original = lines[occurrence->line];
+        lines[occurrence->line].replace(occurrence->column, occurrence->length,
+            shellDoubleQuoted(projectName + occurrence->suffix));
+        showStyled("Title preview", randomColour());
+        std::cout << "Before: " << original << '\n'
+                  << "After:  " << lines[occurrence->line] << "\n\n";
+        if (!confirm("Update this builder title in " + path.string() + "?")) {
             error = "edit cancelled";
             return false;
         }
