@@ -25,7 +25,7 @@ namespace fs = std::filesystem;
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.33"
+#define KIZUKU_VERSION "0.34"
 #endif
 
 constexpr const char* kReset = "\033[0m";
@@ -493,6 +493,18 @@ std::vector<std::string> buildAllOrNothingSnippet(const std::vector<std::string>
 //---------------------------------------------------------------------------------------------------------------------------------//
 
 std::vector<std::string> buildHumSnippet(const std::string& type) {
+    if (type == "Add Shinko") {
+        return {"if [ ! -x " + std::string(kShinkoPath) + " ]; then",
+                "    echo \"This build file requires Shinko at " +
+                    std::string(kShinkoPath) + ".\" >&2",
+                "    exit 127",
+                "fi",
+                "",
+                std::string(kShinkoPath) + " \"$PWD\" &",
+                "shinko_team=$!",
+                "trap '" + std::string(kShinkoPath) +
+                    " --quit \"$shinko_team\"' EXIT"};
+    }
     if (type == "Git Last Commit Show") {
         return {"git show --name-status --oneline"};
     }
@@ -1359,9 +1371,9 @@ bool editScriptOnce(const fs::path& path, std::string& error) {
 
     const auto type = selectOption("Edit action or block to add",
         {"Hum Confirm", "Check Hum Confirm Status", "Update Script Version", "Update Title",
-         "Output to Log", "All or Nothing", "Git Pull Basic", "Fancy Git Pull",
-         "Git Last Commit Show", "Hum Choose", "Hum Input", "Hum File Picker", "Hum Style",
-         "Hum Write", "Hum Spin"},
+         "Output to Log", "Add Shinko", "All or Nothing", "Git Pull Basic",
+         "Fancy Git Pull", "Git Last Commit Show", "Hum Choose", "Hum Input",
+         "Hum File Picker", "Hum Style", "Hum Write", "Hum Spin"},
         "Hum Confirm");
     if (type == "Check Hum Confirm Status") {
         const bool hasHumConfirmation = std::any_of(lines.begin(), lines.end(),

@@ -134,6 +134,11 @@ Choose **Output to Log** to select a command line and append
 error to `output.log`. Blank lines and comments are omitted from the selector,
 and Kizuku previews the changed line before updating the script.
 
+Choose **Add Shinko** to insert the complete Shinko lifecycle into an existing
+build script at a selected source position. The block checks the installed
+Shinko executable, launches it against the script's current project directory,
+records its team ID, and adds an exit trap that stops only that instance.
+
 ## Restyle an existing script
 
 Choose **Restyle an existing script**, select a shell script and then choose any

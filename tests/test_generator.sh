@@ -284,6 +284,22 @@ if printf 'Output to Log\n' \
 fi
 cmp "$test_dir/edit-output-log-empty.expected" "$test_dir/edit-output-log-empty.sh"
 
+# Insert the complete Shinko lifecycle into an existing build script.
+printf '#!/bin/bash\n\nclear\ncd /boot/home/demo || exit 1\n\necho "build"\n' \
+    > "$test_dir/edit-shinko.sh"
+chmod 750 "$test_dir/edit-shinko.sh"
+printf 'Add Shinko\n5\ny\nn\n' \
+    | ./kizuku "$test_dir/edit-shinko.sh" >/dev/null
+test -x "$test_dir/edit-shinko.sh"
+bash -n "$test_dir/edit-shinko.sh"
+grep -Fq 'if [ ! -x /boot/home/config/non-packaged/apps/Shinko ]; then' \
+    "$test_dir/edit-shinko.sh"
+grep -Fq '/boot/home/config/non-packaged/apps/Shinko "$PWD" &' \
+    "$test_dir/edit-shinko.sh"
+grep -Fq 'shinko_team=$!' "$test_dir/edit-shinko.sh"
+grep -Fq 'trap '\''/boot/home/config/non-packaged/apps/Shinko --quit "$shinko_team"'\'' EXIT' \
+    "$test_dir/edit-shinko.sh"
+
 # Insert the ready-made command for displaying the last Git commit.
 printf '#!/bin/sh\n' > "$test_dir/edit-git-show.sh"
 chmod 750 "$test_dir/edit-git-show.sh"
