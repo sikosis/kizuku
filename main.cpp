@@ -25,7 +25,7 @@ namespace fs = std::filesystem;
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.32"
+#define KIZUKU_VERSION "0.33"
 #endif
 
 constexpr const char* kReset = "\033[0m";
@@ -34,6 +34,7 @@ constexpr const char* kAmber = "\033[38;2;232;183;106m";
 constexpr const char* kPurple = "\033[38;2;111;58;99m";
 constexpr const char* kName = "Kizuku";
 constexpr const char* kVersion = KIZUKU_VERSION;
+constexpr const char* kShinkoPath = "/boot/home/config/non-packaged/apps/Shinko";
 
 bool gUseHum = false;
 
@@ -87,6 +88,7 @@ struct BuildFile {
     std::string titleColour;
     std::string directory;
     fs::path output;
+    bool useShinko;
     std::vector<Step> steps;
 };
 
@@ -1818,11 +1820,23 @@ bool writeBuildFile(const BuildFile& buildFile, std::string& error) {
     output << "    echo \"This build file requires hum.\" >&2\n";
     output << "    exit 127\n";
     output << "fi\n\n";
+    if (buildFile.useShinko) {
+        output << "if [ ! -x " << kShinkoPath << " ]; then\n";
+        output << "    echo \"This build file requires Shinko at " << kShinkoPath
+               << ".\" >&2\n";
+        output << "    exit 127\n";
+        output << "fi\n\n";
+    }
     output << "hum style --border rounded --foreground " << buildFile.titleColour
            << " --padding \"1 2\" "
               "--margin \"1 0\" --bold "
            << shellDoubleQuoted(buildFile.title) << "\n\n";
     output << "if hum confirm \"Continue?\"; then\n\n";
+    if (buildFile.useShinko) {
+        output << kShinkoPath << " \"$PWD\" &\n";
+        output << "shinko_team=$!\n";
+        output << "trap '" << kShinkoPath << " --quit \"$shinko_team\"' EXIT\n\n";
+    }
     for (std::size_t index = 0; index < buildFile.steps.size(); ++index) {
         writeStep(output, buildFile.steps[index], index + 1);
     }
@@ -1965,6 +1979,8 @@ WizardResult runWizard() {
         steps.push_back({"Run / Test", "Run?", themeColour(theme, 4), {command}});
     }
     const fs::path output = steps.empty() ? fs::path{} : fs::path(prompt("Output build file", "build.sh"));
+    const bool useShinko = !steps.empty() &&
+        confirm("Add Shinko (progress bar) to this build?", false);
 
     std::optional<GitFile> gitFile;
     if (confirm("Create a Git commit-and-push script?", false)) {
@@ -1972,7 +1988,8 @@ WizardResult runWizard() {
                           randomColour(), randomColour(), randomColour()};
     }
 
-    return {{projectName + " Builder v" + version, randomColour(), directory, output, steps}, gitFile};
+    return {{projectName + " Builder v" + version, randomColour(), directory, output,
+             useShinko, steps}, gitFile};
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
@@ -1993,6 +2010,7 @@ void printUsage(const char* executable) {
               << "  Quit                     Exit without making changes\n\n"
               << "When Hum is available, Kizuku uses it for prompts, styling, confirmation,\n"
               << "and project-directory selection. Plain terminal prompts are used otherwise.\n"
+              << "Generated builds can optionally launch and stop a Shinko progress overlay.\n"
               << "Built-in themes: Kizuku (default), Coast, Sakura, Forest, Sunset, Lavender, Slate,\n"
               << "Desert, Neon, Rosewood, Arctic, Citrus, and ten popular four-colour palettes.\n";
 }

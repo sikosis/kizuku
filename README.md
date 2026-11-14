@@ -63,6 +63,12 @@ built-in palettes and displays its name before continuing. The palettes are kept
 together as theme data so more choices can be added without changing the step
 generator.
 
+Generated build scripts can optionally launch
+`/boot/home/config/non-packaged/apps/Shinko` to display native build progress.
+Kizuku passes the current project directory to Shinko, records the launched
+team ID, and installs an exit trap that stops only that Shinko instance when
+the build script finishes. The Shinko option defaults to No.
+
 ## Edit an existing script
 
 Choose **Edit an existing script** from Kizuku's opening menu. Kizuku can insert
