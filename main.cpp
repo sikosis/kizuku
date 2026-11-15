@@ -25,7 +25,7 @@ namespace fs = std::filesystem;
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.34"
+#define KIZUKU_VERSION "0.35"
 #endif
 
 constexpr const char* kReset = "\033[0m";
@@ -35,6 +35,7 @@ constexpr const char* kPurple = "\033[38;2;111;58;99m";
 constexpr const char* kName = "Kizuku";
 constexpr const char* kVersion = KIZUKU_VERSION;
 constexpr const char* kShinkoPath = "/boot/home/config/non-packaged/apps/Shinko";
+constexpr const char* kTtfxPath = "/boot/home/projects/ttfx-haiku/ttfx";
 
 bool gUseHum = false;
 
@@ -89,6 +90,7 @@ struct BuildFile {
     std::string directory;
     fs::path output;
     bool useShinko;
+    std::optional<std::string> ttfxText;
     std::vector<Step> steps;
 };
 
@@ -493,6 +495,17 @@ std::vector<std::string> buildAllOrNothingSnippet(const std::vector<std::string>
 //---------------------------------------------------------------------------------------------------------------------------------//
 
 std::vector<std::string> buildHumSnippet(const std::string& type) {
+    if (type == "TTFX Output") {
+        const auto text = prompt("TTFX text", "Build starting");
+        return {"if [ ! -x " + std::string(kTtfxPath) + " ]; then",
+                "    echo \"This build file requires TTFX at " +
+                    std::string(kTtfxPath) + ".\" >&2",
+                "    exit 127",
+                "fi",
+                "",
+                "echo " + shellDoubleQuoted(text) + " | " +
+                    std::string(kTtfxPath) + " --random-effect"};
+    }
     if (type == "Add Shinko") {
         return {"if [ ! -x " + std::string(kShinkoPath) + " ]; then",
                 "    echo \"This build file requires Shinko at " +
@@ -1371,7 +1384,7 @@ bool editScriptOnce(const fs::path& path, std::string& error) {
 
     const auto type = selectOption("Edit action or block to add",
         {"Hum Confirm", "Check Hum Confirm Status", "Update Script Version", "Update Title",
-         "Output to Log", "Add Shinko", "All or Nothing", "Git Pull Basic",
+         "Output to Log", "Add Shinko", "TTFX Output", "All or Nothing", "Git Pull Basic",
          "Fancy Git Pull", "Git Last Commit Show", "Hum Choose", "Hum Input",
          "Hum File Picker", "Hum Style", "Hum Write", "Hum Spin"},
         "Hum Confirm");
@@ -1839,6 +1852,13 @@ bool writeBuildFile(const BuildFile& buildFile, std::string& error) {
         output << "    exit 127\n";
         output << "fi\n\n";
     }
+    if (buildFile.ttfxText) {
+        output << "if [ ! -x " << kTtfxPath << " ]; then\n";
+        output << "    echo \"This build file requires TTFX at " << kTtfxPath
+               << ".\" >&2\n";
+        output << "    exit 127\n";
+        output << "fi\n\n";
+    }
     output << "hum style --border rounded --foreground " << buildFile.titleColour
            << " --padding \"1 2\" "
               "--margin \"1 0\" --bold "
@@ -1848,6 +1868,10 @@ bool writeBuildFile(const BuildFile& buildFile, std::string& error) {
         output << kShinkoPath << " \"$PWD\" &\n";
         output << "shinko_team=$!\n";
         output << "trap '" << kShinkoPath << " --quit \"$shinko_team\"' EXIT\n\n";
+    }
+    if (buildFile.ttfxText) {
+        output << "echo " << shellDoubleQuoted(*buildFile.ttfxText) << " | "
+               << kTtfxPath << " --random-effect\n\n";
     }
     for (std::size_t index = 0; index < buildFile.steps.size(); ++index) {
         writeStep(output, buildFile.steps[index], index + 1);
@@ -1993,6 +2017,10 @@ WizardResult runWizard() {
     const fs::path output = steps.empty() ? fs::path{} : fs::path(prompt("Output build file", "build.sh"));
     const bool useShinko = !steps.empty() &&
         confirm("Add Shinko (progress bar) to this build?", false);
+    std::optional<std::string> ttfxText;
+    if (!steps.empty() && confirm("Add TTFX output to this build?", false)) {
+        ttfxText = prompt("TTFX text", projectName + " build");
+    }
 
     std::optional<GitFile> gitFile;
     if (confirm("Create a Git commit-and-push script?", false)) {
@@ -2001,7 +2029,7 @@ WizardResult runWizard() {
     }
 
     return {{projectName + " Builder v" + version, randomColour(), directory, output,
-             useShinko, steps}, gitFile};
+             useShinko, ttfxText, steps}, gitFile};
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
@@ -2023,6 +2051,7 @@ void printUsage(const char* executable) {
               << "When Hum is available, Kizuku uses it for prompts, styling, confirmation,\n"
               << "and project-directory selection. Plain terminal prompts are used otherwise.\n"
               << "Generated builds can optionally launch and stop a Shinko progress overlay.\n"
+              << "They can also pipe custom text through TTFX using a random effect.\n"
               << "Built-in themes: Kizuku (default), Coast, Sakura, Forest, Sunset, Lavender, Slate,\n"
               << "Desert, Neon, Rosewood, Arctic, Citrus, and ten popular four-colour palettes.\n";
 }

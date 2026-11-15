@@ -69,6 +69,10 @@ Kizuku passes the current project directory to Shinko, records the launched
 team ID, and installs an exit trap that stops only that Shinko instance when
 the build script finishes. The Shinko option defaults to No.
 
+Build scripts can also include optional **TTFX Output**. Kizuku asks for the
+text, checks `/boot/home/projects/ttfx-haiku/ttfx`, and pipes the safely escaped
+text into `--random-effect`. The TTFX option defaults to No.
+
 ## Edit an existing script
 
 Choose **Edit an existing script** from Kizuku's opening menu. Kizuku can insert
@@ -138,6 +142,10 @@ Choose **Add Shinko** to insert the complete Shinko lifecycle into an existing
 build script at a selected source position. The block checks the installed
 Shinko executable, launches it against the script's current project directory,
 records its team ID, and adds an exit trap that stops only that instance.
+
+Choose **TTFX Output** to enter text and insert a checked TTFX random-effect
+command at a selected source position. Kizuku preserves the entered text as a
+literal shell value, including characters such as `$`, quotes, and backticks.
 
 ## Restyle an existing script
 
