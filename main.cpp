@@ -20,12 +20,14 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "diamfont_data.h"
+
 namespace fs = std::filesystem;
 
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.35"
+#define KIZUKU_VERSION "0.37"
 #endif
 
 constexpr const char* kReset = "\033[0m";
@@ -91,6 +93,7 @@ struct BuildFile {
     fs::path output;
     bool useShinko;
     std::optional<std::string> ttfxText;
+    std::optional<std::string> customTitleText;
     std::vector<Step> steps;
 };
 
@@ -140,6 +143,139 @@ std::string shellDoubleQuoted(const std::string& value) {
     }
     escaped.push_back('"');
     return escaped;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+using DiamFontRow = std::vector<std::string>;
+using DiamFontGlyph = std::array<DiamFontRow, 7>;
+
+DiamFontRow splitUtf8(const std::string& value) {
+    DiamFontRow characters;
+    for (std::size_t index = 0; index < value.size();) {
+        const auto firstByte = static_cast<unsigned char>(value[index]);
+        std::size_t length = 1;
+        if ((firstByte & 0xf0) == 0xf0) {
+            length = 4;
+        } else if ((firstByte & 0xe0) == 0xe0) {
+            length = 3;
+        } else if ((firstByte & 0xc0) == 0xc0) {
+            length = 2;
+        }
+        length = std::min(length, value.size() - index);
+        characters.push_back(value.substr(index, length));
+        index += length;
+    }
+    return characters;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+std::array<DiamFontGlyph, 95> loadDiamFont() {
+    std::array<DiamFontGlyph, 95> glyphs;
+    std::istringstream input(kDiamFontData);
+    std::string line;
+    do {
+        std::getline(input, line);
+    } while (input && line.empty());
+
+    std::istringstream header(line);
+    std::string signature;
+    int height = 0;
+    int baseline = 0;
+    int maximumLength = 0;
+    int oldLayout = 0;
+    int commentLines = 0;
+    header >> signature >> height >> baseline >> maximumLength >> oldLayout >> commentLines;
+    for (int index = 0; index < commentLines; ++index) {
+        std::getline(input, line);
+    }
+
+    const char endMark = '@';
+    for (auto& glyph : glyphs) {
+        for (auto& row : glyph) {
+            std::getline(input, line);
+            if (!line.empty() && line.back() == '\r') {
+                line.pop_back();
+            }
+            while (!line.empty() && line.back() == endMark) {
+                line.pop_back();
+            }
+            std::replace(line.begin(), line.end(), '$', ' ');
+            row = splitUtf8(line);
+        }
+    }
+    return glyphs;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+bool diamRowsCanOverlap(const std::array<DiamFontRow, 7>& output,
+                        const DiamFontGlyph& glyph, std::size_t overlap) {
+    for (std::size_t row = 0; row < output.size(); ++row) {
+        const auto offset = output[row].size() - overlap;
+        for (std::size_t column = 0; column < glyph[row].size() &&
+             offset + column < output[row].size(); ++column) {
+            if (output[row][offset + column] != " " && glyph[row][column] != " ") {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+void appendDiamGlyph(std::array<DiamFontRow, 7>& output, const DiamFontGlyph& glyph) {
+    std::size_t maximumOverlap = std::numeric_limits<std::size_t>::max();
+    for (std::size_t row = 0; row < output.size(); ++row) {
+        maximumOverlap = std::min(maximumOverlap,
+            std::min(output[row].size(), glyph[row].size()));
+    }
+    if (maximumOverlap == std::numeric_limits<std::size_t>::max()) {
+        maximumOverlap = 0;
+    }
+
+    std::size_t overlap = maximumOverlap;
+    while (overlap > 0 && !diamRowsCanOverlap(output, glyph, overlap)) {
+        --overlap;
+    }
+    for (std::size_t row = 0; row < output.size(); ++row) {
+        const auto offset = output[row].size() - overlap;
+        for (std::size_t column = 0; column < glyph[row].size(); ++column) {
+            const auto position = offset + column;
+            if (position == output[row].size()) {
+                output[row].push_back(glyph[row][column]);
+            } else if (glyph[row][column] != " ") {
+                output[row][position] = glyph[row][column];
+            }
+        }
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+std::string renderDiamFont(const std::string& text) {
+    static const auto glyphs = loadDiamFont();
+    std::array<DiamFontRow, 7> output;
+    for (const unsigned char character : text) {
+        const unsigned char printable = character >= 32 && character <= 126 ? character : ' ';
+        appendDiamGlyph(output, glyphs[printable - 32]);
+    }
+
+    std::ostringstream rendered;
+    for (std::size_t row = 0; row < output.size(); ++row) {
+        while (!output[row].empty() && output[row].back() == " ") {
+            output[row].pop_back();
+        }
+        for (const auto& character : output[row]) {
+            rendered << character;
+        }
+        if (row + 1 < output.size()) {
+            rendered << '\n';
+        }
+    }
+    return rendered.str();
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
@@ -495,6 +631,17 @@ std::vector<std::string> buildAllOrNothingSnippet(const std::vector<std::string>
 //---------------------------------------------------------------------------------------------------------------------------------//
 
 std::vector<std::string> buildHumSnippet(const std::string& type) {
+    if (type == "Add Custom Title") {
+        const auto title = prompt("Custom title text", "Project Title");
+        return {"if [ ! -x " + std::string(kTtfxPath) + " ]; then",
+                "    echo \"This build file requires TTFX at " +
+                    std::string(kTtfxPath) + ".\" >&2",
+                "    exit 127",
+                "fi",
+                "",
+                "echo " + shellDoubleQuoted(renderDiamFont(title)) + " | " +
+                    std::string(kTtfxPath) + " --random-effect"};
+    }
     if (type == "TTFX Output") {
         const auto text = prompt("TTFX text", "Build starting");
         return {"if [ ! -x " + std::string(kTtfxPath) + " ]; then",
@@ -507,16 +654,12 @@ std::vector<std::string> buildHumSnippet(const std::string& type) {
                     std::string(kTtfxPath) + " --random-effect"};
     }
     if (type == "Add Shinko") {
-        return {"if [ ! -x " + std::string(kShinkoPath) + " ]; then",
-                "    echo \"This build file requires Shinko at " +
-                    std::string(kShinkoPath) + ".\" >&2",
-                "    exit 127",
-                "fi",
-                "",
-                std::string(kShinkoPath) + " \"$PWD\" &",
-                "shinko_team=$!",
-                "trap '" + std::string(kShinkoPath) +
-                    " --quit \"$shinko_team\"' EXIT"};
+        return {"if [ -x " + std::string(kShinkoPath) + " ]; then",
+                "    " + std::string(kShinkoPath) + " \"$PWD\" &",
+                "    shinko_team=$!",
+                "    trap '" + std::string(kShinkoPath) +
+                    " --quit \"$shinko_team\"' EXIT",
+                "fi"};
     }
     if (type == "Git Last Commit Show") {
         return {"git show --name-status --oneline"};
@@ -1384,9 +1527,9 @@ bool editScriptOnce(const fs::path& path, std::string& error) {
 
     const auto type = selectOption("Edit action or block to add",
         {"Hum Confirm", "Check Hum Confirm Status", "Update Script Version", "Update Title",
-         "Output to Log", "Add Shinko", "TTFX Output", "All or Nothing", "Git Pull Basic",
-         "Fancy Git Pull", "Git Last Commit Show", "Hum Choose", "Hum Input",
-         "Hum File Picker", "Hum Style", "Hum Write", "Hum Spin"},
+         "Output to Log", "Add Shinko", "TTFX Output", "Add Custom Title",
+         "All or Nothing", "Git Pull Basic", "Fancy Git Pull", "Git Last Commit Show",
+         "Hum Choose", "Hum Input", "Hum File Picker", "Hum Style", "Hum Write", "Hum Spin"},
         "Hum Confirm");
     if (type == "Check Hum Confirm Status") {
         const bool hasHumConfirmation = std::any_of(lines.begin(), lines.end(),
@@ -1845,14 +1988,7 @@ bool writeBuildFile(const BuildFile& buildFile, std::string& error) {
     output << "    echo \"This build file requires hum.\" >&2\n";
     output << "    exit 127\n";
     output << "fi\n\n";
-    if (buildFile.useShinko) {
-        output << "if [ ! -x " << kShinkoPath << " ]; then\n";
-        output << "    echo \"This build file requires Shinko at " << kShinkoPath
-               << ".\" >&2\n";
-        output << "    exit 127\n";
-        output << "fi\n\n";
-    }
-    if (buildFile.ttfxText) {
+    if (buildFile.ttfxText || buildFile.customTitleText) {
         output << "if [ ! -x " << kTtfxPath << " ]; then\n";
         output << "    echo \"This build file requires TTFX at " << kTtfxPath
                << ".\" >&2\n";
@@ -1865,13 +2001,19 @@ bool writeBuildFile(const BuildFile& buildFile, std::string& error) {
            << shellDoubleQuoted(buildFile.title) << "\n\n";
     output << "if hum confirm \"Continue?\"; then\n\n";
     if (buildFile.useShinko) {
-        output << kShinkoPath << " \"$PWD\" &\n";
-        output << "shinko_team=$!\n";
-        output << "trap '" << kShinkoPath << " --quit \"$shinko_team\"' EXIT\n\n";
+        output << "if [ -x " << kShinkoPath << " ]; then\n";
+        output << "    " << kShinkoPath << " \"$PWD\" &\n";
+        output << "    shinko_team=$!\n";
+        output << "    trap '" << kShinkoPath << " --quit \"$shinko_team\"' EXIT\n";
+        output << "fi\n\n";
     }
     if (buildFile.ttfxText) {
         output << "echo " << shellDoubleQuoted(*buildFile.ttfxText) << " | "
                << kTtfxPath << " --random-effect\n\n";
+    }
+    if (buildFile.customTitleText) {
+        output << "echo " << shellDoubleQuoted(renderDiamFont(*buildFile.customTitleText))
+               << " | " << kTtfxPath << " --random-effect\n\n";
     }
     for (std::size_t index = 0; index < buildFile.steps.size(); ++index) {
         writeStep(output, buildFile.steps[index], index + 1);
@@ -2021,6 +2163,10 @@ WizardResult runWizard() {
     if (!steps.empty() && confirm("Add TTFX output to this build?", false)) {
         ttfxText = prompt("TTFX text", projectName + " build");
     }
+    std::optional<std::string> customTitleText;
+    if (!steps.empty() && confirm("Add a custom DiamFont title to this build?", false)) {
+        customTitleText = prompt("Custom title text", projectName);
+    }
 
     std::optional<GitFile> gitFile;
     if (confirm("Create a Git commit-and-push script?", false)) {
@@ -2029,7 +2175,7 @@ WizardResult runWizard() {
     }
 
     return {{projectName + " Builder v" + version, randomColour(), directory, output,
-             useShinko, ttfxText, steps}, gitFile};
+             useShinko, ttfxText, customTitleText, steps}, gitFile};
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
@@ -2052,6 +2198,7 @@ void printUsage(const char* executable) {
               << "and project-directory selection. Plain terminal prompts are used otherwise.\n"
               << "Generated builds can optionally launch and stop a Shinko progress overlay.\n"
               << "They can also pipe custom text through TTFX using a random effect.\n"
+              << "DiamFont custom titles can be generated and piped through TTFX.\n"
               << "Built-in themes: Kizuku (default), Coast, Sakura, Forest, Sunset, Lavender, Slate,\n"
               << "Desert, Neon, Rosewood, Arctic, Citrus, and ten popular four-colour palettes.\n";
 }

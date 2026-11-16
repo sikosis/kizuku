@@ -59,6 +59,8 @@ mkdir -p "$staging_directory/documentation/packages/kizuku"
 install -m 755 kizuku "$staging_directory/bin/kizuku"
 install -m 644 README.md "$staging_directory/documentation/packages/kizuku/README.md"
 install -m 644 LICENSE "$staging_directory/documentation/packages/kizuku/LICENSE"
+install -m 644 THIRD_PARTY_NOTICES.md \
+    "$staging_directory/documentation/packages/kizuku/THIRD_PARTY_NOTICES.md"
 
 cat > "$staging_directory/.PackageInfo" <<EOF
 name          kizuku

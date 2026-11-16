@@ -67,11 +67,19 @@ Generated build scripts can optionally launch
 `/boot/home/config/non-packaged/apps/Shinko` to display native build progress.
 Kizuku passes the current project directory to Shinko, records the launched
 team ID, and installs an exit trap that stops only that Shinko instance when
-the build script finishes. The Shinko option defaults to No.
+the build script finishes. If Shinko is not installed, the generated script
+silently skips the progress overlay and continues normally. The Shinko option
+defaults to No.
 
 Build scripts can also include optional **TTFX Output**. Kizuku asks for the
 text, checks `/boot/home/projects/ttfx-haiku/ttfx`, and pipes the safely escaped
 text into `--random-effect`. The TTFX option defaults to No.
+
+Choose **Add Custom Title** to enter a title and have Kizuku render it locally
+with the seven-row DiamFont ASCII font. The generated multiline title is safely
+quoted in an `echo` command and piped to TTFX with `--random-effect`. This works
+offline and does not require FIGlet to be installed. New-build generation also
+offers the custom-title option, defaulting its text to the project name.
 
 ## Edit an existing script
 
@@ -139,13 +147,18 @@ error to `output.log`. Blank lines and comments are omitted from the selector,
 and Kizuku previews the changed line before updating the script.
 
 Choose **Add Shinko** to insert the complete Shinko lifecycle into an existing
-build script at a selected source position. The block checks the installed
-Shinko executable, launches it against the script's current project directory,
-records its team ID, and adds an exit trap that stops only that instance.
+build script at a selected source position. When the Shinko executable is
+available, the block launches it against the script's current project
+directory, records its team ID, and adds an exit trap that stops only that
+instance. A missing Shinko installation does not interrupt the build.
 
 Choose **TTFX Output** to enter text and insert a checked TTFX random-effect
 command at a selected source position. Kizuku preserves the entered text as a
 literal shell value, including characters such as `$`, quotes, and backticks.
+
+Choose **Add Custom Title** to generate a multiline DiamFont title and insert
+its checked TTFX command at a selected source position. The title is previewed
+before the script is updated.
 
 ## Restyle an existing script
 

@@ -15,6 +15,7 @@ test "$1" = create
 test -x bin/kizuku
 test -f documentation/packages/kizuku/README.md
 test -f documentation/packages/kizuku/LICENSE
+test -f documentation/packages/kizuku/THIRD_PARTY_NOTICES.md
 cp .PackageInfo "$2.PackageInfo"
 : > "$2"
 EOF

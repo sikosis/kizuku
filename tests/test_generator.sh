@@ -46,7 +46,7 @@ check_title_colour() {
 # Project, version, accept the derived directory, add every themed step using
 # the default Kizuku theme and default commands except for build, output, then
 # skip the Git script.
-printf '\nDemo App\n2.0\n\n\ny\ny\n\ny\nmake -j4\ny\n\ny\n\n%s/build.sh\ny\ny\nDemo build starting\nn\n' "$test_dir" \
+printf '\nDemo App\n2.0\n\n\ny\ny\n\ny\nmake -j4\ny\n\ny\n\n%s/build.sh\ny\ny\nDemo build starting\ny\nHAIKU LOG\nn\n' "$test_dir" \
     | ./kizuku >/dev/null
 
 test -x "$test_dir/build.sh"
@@ -60,16 +60,22 @@ grep -Fq '==> Step 3: Make' "$test_dir/build.sh"
 grep -Fq '==> Step 4: Make Test' "$test_dir/build.sh"
 grep -Fq '==> Step 5: Run / Test' "$test_dir/build.sh"
 grep -Fq 'make -j4' "$test_dir/build.sh"
-grep -Fq 'if [ ! -x /boot/home/config/non-packaged/apps/Shinko ]; then' \
+grep -Fq 'if [ -x /boot/home/config/non-packaged/apps/Shinko ]; then' \
     "$test_dir/build.sh"
-grep -Fq '/boot/home/config/non-packaged/apps/Shinko "$PWD" &' "$test_dir/build.sh"
-grep -Fq 'shinko_team=$!' "$test_dir/build.sh"
-grep -Fq 'trap '\''/boot/home/config/non-packaged/apps/Shinko --quit "$shinko_team"'\'' EXIT' \
+grep -Fq '    /boot/home/config/non-packaged/apps/Shinko "$PWD" &' "$test_dir/build.sh"
+grep -Fq '    shinko_team=$!' "$test_dir/build.sh"
+grep -Fq '    trap '\''/boot/home/config/non-packaged/apps/Shinko --quit "$shinko_team"'\'' EXIT' \
     "$test_dir/build.sh"
+if grep -Fq 'requires Shinko' "$test_dir/build.sh"; then
+    echo "optional Shinko integration still stops builds when Shinko is absent" >&2
+    exit 1
+fi
 grep -Fq 'if [ ! -x /boot/home/projects/ttfx-haiku/ttfx ]; then' \
     "$test_dir/build.sh"
 grep -Fq 'echo "Demo build starting" | /boot/home/projects/ttfx-haiku/ttfx --random-effect' \
     "$test_dir/build.sh"
+grep -Fq 'echo "▗▖ ▗▖ ▗▄▖ ▗▄▄▄▖▗▖ ▗▖▗▖ ▗▖▗▖    ▗▄▖  ▗▄▄▖' "$test_dir/build.sh"
+test "$(grep -Fc '/boot/home/projects/ttfx-haiku/ttfx --random-effect' "$test_dir/build.sh")" -eq 2
 grep -Fq -- '--foreground "#f2cc60"' "$test_dir/build.sh"
 grep -Fq -- '--foreground "#e8b76a"' "$test_dir/build.sh"
 grep -Fq -- '--foreground "#d98a4e"' "$test_dir/build.sh"
@@ -123,7 +129,7 @@ grep -Fq -- '--foreground 44 --bold "==> Step 4: Package / Install"' "$test_dir/
 grep -Fq -- '--foreground 45 --bold "==> Step 5: Run / Test"' "$test_dir/renumber-steps.sh"
 
 # Verify both additional palettes across all five step roles.
-printf '\nCoast App\n1.0\n\nCoast\ny\ny\n\ny\n\ny\n\ny\n\n%s/coast.sh\nn\nn\nn\n' "$test_dir" \
+printf '\nCoast App\n1.0\n\nCoast\ny\ny\n\ny\n\ny\n\ny\n\n%s/coast.sh\nn\nn\nn\nn\n' "$test_dir" \
     | ./kizuku >/dev/null
 grep -Fq -- '--foreground "#73d2de"' "$test_dir/coast.sh"
 grep -Fq -- '--foreground "#52b2cf"' "$test_dir/coast.sh"
@@ -140,7 +146,7 @@ if grep -Fq 'ttfx' "$test_dir/coast.sh"; then
 fi
 bash -n "$test_dir/coast.sh"
 
-printf '\nSakura App\n1.0\n\nSakura\ny\ny\n\ny\n\ny\n\ny\n\n%s/sakura.sh\nn\nn\nn\n' "$test_dir" \
+printf '\nSakura App\n1.0\n\nSakura\ny\ny\n\ny\n\ny\n\ny\n\n%s/sakura.sh\nn\nn\nn\nn\n' "$test_dir" \
     | ./kizuku >/dev/null
 grep -Fq -- '--foreground "#ffb3c6"' "$test_dir/sakura.sh"
 grep -Fq -- '--foreground "#ff8fab"' "$test_dir/sakura.sh"
@@ -153,7 +159,7 @@ check_added_theme() {
     theme_name=$1
     file_name=$2
     shift 2
-    printf '\n%s App\n1.0\n\n%s\ny\ny\n\ny\n\ny\n\ny\n\n%s/%s.sh\nn\nn\nn\n' \
+    printf '\n%s App\n1.0\n\n%s\ny\ny\n\ny\n\ny\n\ny\n\n%s/%s.sh\nn\nn\nn\nn\n' \
         "$theme_name" "$theme_name" "$test_dir" "$file_name" | ./kizuku >/dev/null
     for colour in "$@"; do
         grep -Fq -- "--foreground \"$colour\"" "$test_dir/$file_name.sh"
@@ -174,7 +180,7 @@ check_four_colour_theme() {
     second_colour=$4
     third_colour=$5
     fourth_colour=$6
-    printf '\n%s App\n1.0\n\n%s\ny\ny\n\ny\n\ny\n\ny\n\n%s/%s.sh\nn\nn\nn\n' \
+    printf '\n%s App\n1.0\n\n%s\ny\ny\n\ny\n\ny\n\ny\n\n%s/%s.sh\nn\nn\nn\nn\n' \
         "$theme_name" "$theme_name" "$test_dir" "$file_name" | ./kizuku >/dev/null
     test "$(grep -Fc -- "--foreground \"$first_colour\"" "$test_dir/$file_name.sh")" -eq 2
     grep -Fq -- "--foreground \"$second_colour\"" "$test_dir/$file_name.sh"
@@ -195,7 +201,7 @@ check_four_colour_theme 'Ocean Sunset Vibes' ocean '#26547c' '#ef476f' '#ffd166'
 check_four_colour_theme 'Cherry Blossom Dream' cherry-dream '#880d1e' '#dd2d4a' '#f26a8d' '#f49cbb'
 
 # Random Theme selects and reports one complete built-in palette.
-random_output=$(printf '\nRandom App\n1.0\n\nRandom Theme\ny\nn\ny\n\nn\nn\n%s/random.sh\nn\nn\nn\n' \
+random_output=$(printf '\nRandom App\n1.0\n\nRandom Theme\ny\nn\ny\n\nn\nn\n%s/random.sh\nn\nn\nn\nn\n' \
     "$test_dir" | ./kizuku)
 printf '%s\n' "$random_output" | grep -Fq 'Random theme selected:'
 test -x "$test_dir/random.sh"
@@ -293,20 +299,21 @@ fi
 cmp "$test_dir/edit-output-log-empty.expected" "$test_dir/edit-output-log-empty.sh"
 
 # Insert the complete Shinko lifecycle into an existing build script.
-printf '#!/bin/bash\n\nclear\ncd /boot/home/demo || exit 1\n\necho "build"\n' \
+printf '#!/bin/bash\n\nclear\ncd . || exit 1\n\necho "build"\n' \
     > "$test_dir/edit-shinko.sh"
 chmod 750 "$test_dir/edit-shinko.sh"
 printf 'Add Shinko\n5\ny\nn\n' \
     | ./kizuku "$test_dir/edit-shinko.sh" >/dev/null
 test -x "$test_dir/edit-shinko.sh"
 bash -n "$test_dir/edit-shinko.sh"
-grep -Fq 'if [ ! -x /boot/home/config/non-packaged/apps/Shinko ]; then' \
+grep -Fq 'if [ -x /boot/home/config/non-packaged/apps/Shinko ]; then' \
     "$test_dir/edit-shinko.sh"
-grep -Fq '/boot/home/config/non-packaged/apps/Shinko "$PWD" &' \
+grep -Fq '    /boot/home/config/non-packaged/apps/Shinko "$PWD" &' \
     "$test_dir/edit-shinko.sh"
-grep -Fq 'shinko_team=$!' "$test_dir/edit-shinko.sh"
-grep -Fq 'trap '\''/boot/home/config/non-packaged/apps/Shinko --quit "$shinko_team"'\'' EXIT' \
+grep -Fq '    shinko_team=$!' "$test_dir/edit-shinko.sh"
+grep -Fq '    trap '\''/boot/home/config/non-packaged/apps/Shinko --quit "$shinko_team"'\'' EXIT' \
     "$test_dir/edit-shinko.sh"
+test "$(bash "$test_dir/edit-shinko.sh")" = "build"
 
 # Insert safely escaped text piped through a random TTFX effect.
 printf '#!/bin/bash\n\ncd /boot/home/demo || exit 1\n\necho "build"\n' \
@@ -320,6 +327,18 @@ grep -Fq 'if [ ! -x /boot/home/projects/ttfx-haiku/ttfx ]; then' \
     "$test_dir/edit-ttfx.sh"
 grep -Fq 'echo "Ready \$USER" | /boot/home/projects/ttfx-haiku/ttfx --random-effect' \
     "$test_dir/edit-ttfx.sh"
+
+# Generate and insert a multiline DiamFont title piped through TTFX.
+printf '#!/bin/bash\n\necho "build"\n' > "$test_dir/edit-custom-title.sh"
+chmod 750 "$test_dir/edit-custom-title.sh"
+printf 'Add Custom Title\nHAIKU LOG\n3\ny\nn\n' \
+    | ./kizuku "$test_dir/edit-custom-title.sh" >/dev/null
+test -x "$test_dir/edit-custom-title.sh"
+bash -n "$test_dir/edit-custom-title.sh"
+grep -Fq 'echo "▗▖ ▗▖ ▗▄▖ ▗▄▄▄▖▗▖ ▗▖▗▖ ▗▖▗▖    ▗▄▖  ▗▄▄▖' \
+    "$test_dir/edit-custom-title.sh"
+grep -Fq '" | /boot/home/projects/ttfx-haiku/ttfx --random-effect' \
+    "$test_dir/edit-custom-title.sh"
 
 # Insert the ready-made command for displaying the last Git commit.
 printf '#!/bin/sh\n' > "$test_dir/edit-git-show.sh"
@@ -517,6 +536,7 @@ test "$(./kizuku --version)" = "Kizuku v$version"
 ./kizuku --help | grep -Fq 'ten popular four-colour palettes'
 ./kizuku --help | grep -Fq 'Shinko progress overlay'
 ./kizuku --help | grep -Fq 'pipe custom text through TTFX'
+./kizuku --help | grep -Fq 'DiamFont custom titles'
 ./kizuku --help | grep -Fq 'Quit'
 printf 'Quit\n' | ./kizuku >/dev/null
 
