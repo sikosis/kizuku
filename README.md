@@ -18,6 +18,9 @@ make
 ./kizuku
 ```
 
+The Makefile compiles each C++ source into an object file before linking the
+`kizuku` executable, allowing Shinko to monitor per-file build progress.
+
 The wizard asks for a project name, working directory, output filename and the
 update-code, clean, build, test, and run commands to include. When `hum` is in
 `PATH`, Kizuku uses its styling, input, confirmation, and directory-picker

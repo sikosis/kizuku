@@ -7,13 +7,17 @@ CXXFLAGS += -std=c++17
 TARGET := kizuku
 SOURCES := main.cpp
 HEADERS := diamfont_data.h
+OBJECTS := $(SOURCES:.cpp=.o)
 
 .PHONY: all clean test install hpkg
 
 all: $(TARGET)
 
-$(TARGET): $(SOURCES) $(HEADERS) VERSION
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $(SOURCES)
+$(TARGET): $(OBJECTS)
+	$(CXX) $(LDFLAGS) -o $@ $(OBJECTS) $(LDLIBS)
+
+%.o: %.cpp $(HEADERS) VERSION
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c -o $@ $<
 
 test: $(TARGET)
 	./tests/test_generator.sh
@@ -27,4 +31,4 @@ hpkg:
 	./scripts/build_hpkg.sh
 
 clean:
-	rm -f $(TARGET)
+	rm -f $(TARGET) $(OBJECTS)
