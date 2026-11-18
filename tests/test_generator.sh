@@ -223,7 +223,7 @@ check_numeric_colours "$test_dir/git.sh"
 # Edit an existing executable script and append a configured Hum Confirm block.
 printf '#!/bin/sh\n\necho "start"\n' > "$test_dir/edit-me.sh"
 chmod 754 "$test_dir/edit-me.sh"
-printf 'Edit an existing script\n%s/edit-me.sh\nHum Confirm\nDeploy?\nNo\necho "deploying"\n\ny\nn\n' \
+printf 'Edit an existing script\n%s/edit-me.sh\nHum Confirm\nDeploy?\nNo\necho "deploying"\n\ny\nn\nn\n' \
     "$test_dir" | ./kizuku >/dev/null
 test -x "$test_dir/edit-me.sh"
 sh -n "$test_dir/edit-me.sh"
@@ -233,14 +233,14 @@ grep -Fq 'fi' "$test_dir/edit-me.sh"
 
 # The Hum Confirm wizard can also generate an affirmative default.
 printf '#!/bin/sh\n' > "$test_dir/edit-confirm-yes.sh"
-printf 'Edit an existing script\n%s/edit-confirm-yes.sh\nHum Confirm\nContinue?\nYes\necho "continuing"\n\ny\nn\n' \
+printf 'Edit an existing script\n%s/edit-confirm-yes.sh\nHum Confirm\nContinue?\nYes\necho "continuing"\n\ny\nn\nn\n' \
     "$test_dir" | ./kizuku >/dev/null
 sh -n "$test_dir/edit-confirm-yes.sh"
 grep -Fq 'if hum confirm "Continue?" --default=yes; then' "$test_dir/edit-confirm-yes.sh"
 
 # Add the ready-made basic Git pull step at a selected source position.
 printf '#!/bin/sh\n\necho "existing"\n' > "$test_dir/edit-git-pull.sh"
-printf 'Edit an existing script\n%s/edit-git-pull.sh\nGit Pull Basic\nNo\n3\ny\nn\n' \
+printf 'Edit an existing script\n%s/edit-git-pull.sh\nGit Pull Basic\nNo\n3\ny\nn\nn\n' \
     "$test_dir" | ./kizuku >/dev/null
 sh -n "$test_dir/edit-git-pull.sh"
 grep -Fq 'hum style --foreground "#d4e09b" --bold "==> Step 1: Update Code"' \
@@ -250,7 +250,7 @@ grep -Fq '    git pull' "$test_dir/edit-git-pull.sh"
 
 # Add a Git pull spinner and last-commit summary with the default title.
 printf '#!/bin/sh\nif true; then\n    git pull\nfi\n' > "$test_dir/edit-fancy-git-pull.sh"
-printf 'Edit an existing script\n%s/edit-fancy-git-pull.sh\nFancy Git Pull\n1\n\ny\nn\n' \
+printf 'Edit an existing script\n%s/edit-fancy-git-pull.sh\nFancy Git Pull\n1\n\ny\nn\nn\n' \
     "$test_dir" | ./kizuku >/dev/null
 sh -n "$test_dir/edit-fancy-git-pull.sh"
 grep -Fq '    hum spin --title "Updating Git" -- git pull' \
@@ -260,7 +260,7 @@ test "$(grep -Fc 'git pull' "$test_dir/edit-fancy-git-pull.sh")" -eq 1
 
 # The Fancy Git Pull spinner also accepts a custom title.
 printf '#!/bin/sh\ngit pull\n' > "$test_dir/edit-fancy-git-pull-custom.sh"
-printf 'Fancy Git Pull\n1\nFetching changes\ny\nn\n' \
+printf 'Fancy Git Pull\n1\nFetching changes\ny\nn\nn\n' \
     | ./kizuku "$test_dir/edit-fancy-git-pull-custom.sh" >/dev/null
 sh -n "$test_dir/edit-fancy-git-pull-custom.sh"
 grep -Fq 'hum spin --title "Fetching changes" -- git pull' \
@@ -281,7 +281,7 @@ cmp "$test_dir/edit-fancy-git-pull-empty.expected" \
 # Append valid combined output and error logging to a selected command.
 printf '#!/bin/sh\n# make should stay untouched\nmake -j4   \n' > "$test_dir/edit-output-log.sh"
 chmod 740 "$test_dir/edit-output-log.sh"
-printf 'Output to Log\nbuild output.log\n1\ny\nn\n' \
+printf 'Output to Log\nbuild output.log\n1\ny\nn\nn\n' \
     | ./kizuku "$test_dir/edit-output-log.sh" >/dev/null
 test -x "$test_dir/edit-output-log.sh"
 sh -n "$test_dir/edit-output-log.sh"
@@ -290,7 +290,7 @@ grep -Fq '# make should stay untouched' "$test_dir/edit-output-log.sh"
 
 # Pressing Enter at the filename prompt retains the output.log default.
 printf '#!/bin/sh\nmake test\n' > "$test_dir/edit-output-log-default.sh"
-printf 'Output to Log\n\n1\ny\nn\n' \
+printf 'Output to Log\n\n1\ny\nn\nn\n' \
     | ./kizuku "$test_dir/edit-output-log-default.sh" >/dev/null
 sh -n "$test_dir/edit-output-log-default.sh"
 grep -Fq 'make test > output.log 2>&1' "$test_dir/edit-output-log-default.sh"
@@ -309,7 +309,7 @@ cmp "$test_dir/edit-output-log-empty.expected" "$test_dir/edit-output-log-empty.
 printf '#!/bin/bash\n\nclear\ncd . || exit 1\n\necho "build"\n' \
     > "$test_dir/edit-shinko.sh"
 chmod 750 "$test_dir/edit-shinko.sh"
-printf 'Add Shinko\n5\ny\nn\n' \
+printf 'Add Shinko\n5\ny\nn\nn\n' \
     | ./kizuku "$test_dir/edit-shinko.sh" >/dev/null
 test -x "$test_dir/edit-shinko.sh"
 bash -n "$test_dir/edit-shinko.sh"
@@ -326,7 +326,7 @@ test "$(bash "$test_dir/edit-shinko.sh")" = "build"
 printf '#!/bin/bash\n\ncd /boot/home/demo || exit 1\n\necho "build"\n' \
     > "$test_dir/edit-ttfx.sh"
 chmod 750 "$test_dir/edit-ttfx.sh"
-printf 'TTFX Output\nReady $USER\n4\ny\nn\n' \
+printf 'TTFX Output\nReady $USER\n4\ny\nn\nn\n' \
     | ./kizuku "$test_dir/edit-ttfx.sh" >/dev/null
 test -x "$test_dir/edit-ttfx.sh"
 bash -n "$test_dir/edit-ttfx.sh"
@@ -338,7 +338,7 @@ grep -Fq 'echo "Ready \$USER" | /boot/home/projects/ttfx-haiku/ttfx --random-eff
 # Generate and insert a multiline DiamFont title piped through TTFX.
 printf '#!/bin/bash\n\necho "build"\n' > "$test_dir/edit-custom-title.sh"
 chmod 750 "$test_dir/edit-custom-title.sh"
-printf 'Add Custom Title\nHAIKU LOG\n3\ny\nn\n' \
+printf 'Add Custom Title\nHAIKU LOG\n3\ny\nn\nn\n' \
     | ./kizuku "$test_dir/edit-custom-title.sh" >/dev/null
 test -x "$test_dir/edit-custom-title.sh"
 bash -n "$test_dir/edit-custom-title.sh"
@@ -350,7 +350,7 @@ grep -Fq '" | /boot/home/projects/ttfx-haiku/ttfx --random-effect' \
 # Insert the ready-made command for displaying the last Git commit.
 printf '#!/bin/sh\n' > "$test_dir/edit-git-show.sh"
 chmod 750 "$test_dir/edit-git-show.sh"
-printf 'Edit an existing script\n%s/edit-git-show.sh\nGit Last Commit Show\n\ny\nn\n' \
+printf 'Edit an existing script\n%s/edit-git-show.sh\nGit Last Commit Show\n\ny\nn\nn\n' \
     "$test_dir" | ./kizuku >/dev/null
 grep -Fq 'git show --name-status --oneline' "$test_dir/edit-git-show.sh"
 test -x "$test_dir/edit-git-show.sh"
@@ -359,14 +359,23 @@ sh -n "$test_dir/edit-git-show.sh"
 # A positional script argument opens that file directly and supports editing it.
 printf '#!/bin/sh\n' > "$test_dir/direct-edit.sh"
 chmod 740 "$test_dir/direct-edit.sh"
-printf 'Git Last Commit Show\n\ny\nn\n' | ./kizuku "$test_dir/direct-edit.sh" >/dev/null
+printf 'Git Last Commit Show\n\ny\nn\nn\n' | ./kizuku "$test_dir/direct-edit.sh" >/dev/null
 grep -Fq 'git show --name-status --oneline' "$test_dir/direct-edit.sh"
 test -x "$test_dir/direct-edit.sh"
 sh -n "$test_dir/direct-edit.sh"
 
+# After the final edit, Kizuku can replace itself with the edited script.
+printf '#!/bin/sh\n# Runner v0.1\nprintf "edited-script-ran\\n"\n' \
+    > "$test_dir/edit-and-run.sh"
+chmod 750 "$test_dir/edit-and-run.sh"
+run_output=$(printf 'Update Script Version\n1\nIncrement (+0.1)\ny\nn\ny\n' \
+    | ./kizuku "$test_dir/edit-and-run.sh")
+printf '%s\n' "$run_output" | grep -Fq 'edited-script-ran'
+grep -Fq '# Runner v0.2' "$test_dir/edit-and-run.sh"
+
 # Collect every generated step command into one all-or-nothing confirmation.
 cp "$test_dir/build.sh" "$test_dir/edit-all-or-nothing.sh"
-printf 'Edit an existing script\n%s/edit-all-or-nothing.sh\nAll or Nothing\n\nNo\n\ny\nn\n' \
+printf 'Edit an existing script\n%s/edit-all-or-nothing.sh\nAll or Nothing\n\nNo\n\ny\nn\nn\n' \
     "$test_dir" | ./kizuku >/dev/null
 bash -n "$test_dir/edit-all-or-nothing.sh"
 grep -Fq 'if hum confirm "Run all steps?" --default=no; then' \
@@ -390,7 +399,7 @@ cmp "$test_dir/edit-all-or-nothing-empty.expected" "$test_dir/edit-all-or-nothin
 # Select a source insertion point and add a Hum Choose block after the shebang.
 printf '#!/bin/sh\n\necho "existing"\n' > "$test_dir/edit-choose.sh"
 chmod 700 "$test_dir/edit-choose.sh"
-printf 'Edit an existing script\n%s/edit-choose.sh\nHum Choose\nselection\nFirst item, Second item\n2\ny\nn\n' \
+printf 'Edit an existing script\n%s/edit-choose.sh\nHum Choose\nselection\nFirst item, Second item\n2\ny\nn\nn\n' \
     "$test_dir" | ./kizuku >/dev/null
 test -x "$test_dir/edit-choose.sh"
 sh -n "$test_dir/edit-choose.sh"
@@ -398,7 +407,7 @@ grep -Fq "selection=\$(hum choose 'First item' 'Second item')" "$test_dir/edit-c
 
 # Exercise numbered placement by inserting input immediately before line 3.
 printf '#!/bin/sh\n\necho "existing"\n' > "$test_dir/edit-before.sh"
-printf 'Edit an existing script\n%s/edit-before.sh\nHum Input\nanswer\nYour answer\n3\ny\nn\n' \
+printf 'Edit an existing script\n%s/edit-before.sh\nHum Input\nanswer\nYour answer\n3\ny\nn\nn\n' \
     "$test_dir" | ./kizuku >/dev/null
 sh -n "$test_dir/edit-before.sh"
 test "$(sed -n '3p' "$test_dir/edit-before.sh")" = 'answer=$(hum input --placeholder "Your answer")'
@@ -413,7 +422,7 @@ cmp "$test_dir/edit-cancel.expected" "$test_dir/edit-cancel.sh"
 # A generated Hum file picker starts from the script/project directory rather
 # than whichever directory the user happens to launch the script from.
 printf '#!/bin/sh\n' > "$test_dir/edit-file-picker.sh"
-printf 'Edit an existing script\n%s/edit-file-picker.sh\nHum File Picker\nselected_directory\nDirectory\n\n\ny\nn\n' \
+printf 'Edit an existing script\n%s/edit-file-picker.sh\nHum File Picker\nselected_directory\nDirectory\n\n\ny\nn\nn\n' \
     "$test_dir" | ./kizuku >/dev/null
 sh -n "$test_dir/edit-file-picker.sh"
 grep -Fq 'project_directory=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)' \
@@ -434,7 +443,7 @@ printf '%s\n' \
     'fi' \
     > "$test_dir/edit-confirm-status.sh"
 chmod 751 "$test_dir/edit-confirm-status.sh"
-confirm_status_output=$(printf 'Edit an existing script\n%s/edit-confirm-status.sh\nCheck Hum Confirm Status\n1\nNo\ny\ny\nCheck Hum Confirm Status\n2\nYes\ny\nn\n' \
+confirm_status_output=$(printf 'Edit an existing script\n%s/edit-confirm-status.sh\nCheck Hum Confirm Status\n1\nNo\ny\ny\nCheck Hum Confirm Status\n2\nYes\ny\nn\nn\n' \
     "$test_dir" | ./kizuku)
 printf '%s\n' "$confirm_status_output" | grep -Fq '[default: not set]'
 grep -Fq 'if hum confirm "First?" --default=no; then' "$test_dir/edit-confirm-status.sh"
@@ -463,13 +472,13 @@ printf '%s\n' \
     'echo "Precise v0.26"' \
     > "$test_dir/edit-version.sh"
 chmod 751 "$test_dir/edit-version.sh"
-printf 'Edit an existing script\n%s/edit-version.sh\nUpdate Script Version\n1\nIncrement (+0.1)\ny\nn\n' \
+printf 'Edit an existing script\n%s/edit-version.sh\nUpdate Script Version\n1\nIncrement (+0.1)\ny\nn\nn\n' \
     "$test_dir" | ./kizuku >/dev/null
 grep -Fq 'hum style --bold "Builder v0.3"' "$test_dir/edit-version.sh"
-printf 'Edit an existing script\n%s/edit-version.sh\nUpdate Script Version\n2\nDecrement (-0.1)\ny\nn\n' \
+printf 'Edit an existing script\n%s/edit-version.sh\nUpdate Script Version\n2\nDecrement (-0.1)\ny\nn\nn\n' \
     "$test_dir" | ./kizuku >/dev/null
 grep -Fq 'echo "Release v1.8"' "$test_dir/edit-version.sh"
-printf 'Edit an existing script\n%s/edit-version.sh\nUpdate Script Version\n3\nIncrement (+0.1)\ny\nn\n' \
+printf 'Edit an existing script\n%s/edit-version.sh\nUpdate Script Version\n3\nIncrement (+0.1)\ny\nn\nn\n' \
     "$test_dir" | ./kizuku >/dev/null
 grep -Fq 'echo "Precise v0.36"' "$test_dir/edit-version.sh"
 test -x "$test_dir/edit-version.sh"
@@ -502,7 +511,7 @@ printf '%s\n' \
     'hum style --bold "Ordinary heading"' \
     > "$test_dir/edit-title.sh"
 chmod 751 "$test_dir/edit-title.sh"
-printf 'Update Title\n1\nRelease Helper\ny\nn\n' \
+printf 'Update Title\n1\nRelease Helper\ny\nn\nn\n' \
     | ./kizuku "$test_dir/edit-title.sh" >/dev/null
 grep -Fq 'hum style --border rounded --foreground 88 --padding "1 2" --margin "1 0" --bold "Release Helper Builder v0.2"' \
     "$test_dir/edit-title.sh"
@@ -511,7 +520,7 @@ test -x "$test_dir/edit-title.sh"
 sh -n "$test_dir/edit-title.sh"
 
 # Pressing Enter accepts the current project name shown as the placeholder.
-printf 'Update Title\n1\n\ny\nn\n' \
+printf 'Update Title\n1\n\ny\nn\nn\n' \
     | ./kizuku "$test_dir/edit-title.sh" >/dev/null
 grep -Fq 'hum style --border rounded --foreground 88 --padding "1 2" --margin "1 0" --bold "Release Helper Builder v0.2"' \
     "$test_dir/edit-title.sh"
@@ -519,7 +528,7 @@ grep -Fq 'hum style --border rounded --foreground 88 --padding "1 2" --margin "1
 # Escape shell-sensitive characters while retaining the title version.
 printf '#!/bin/sh\nhum style --bold "Old Name Builder v1.4"\n' \
     > "$test_dir/edit-title-escaped.sh"
-printf 'Update Title\n1\nNew $Tool\ny\nn\n' \
+printf 'Update Title\n1\nNew $Tool\ny\nn\nn\n' \
     | ./kizuku "$test_dir/edit-title-escaped.sh" >/dev/null
 grep -Fq 'hum style --bold "New \$Tool Builder v1.4"' \
     "$test_dir/edit-title-escaped.sh"
@@ -539,6 +548,7 @@ version=$(tr -d '\r\n' < VERSION)
 test "$(./kizuku --version)" = "Kizuku v$version"
 ./kizuku --help | grep -Fq "Kizuku v$version"
 ./kizuku --help | grep -Fq 'SCRIPT           Open this file directly in the Edit workflow'
+./kizuku --help | grep -Fq 'optionally run the selected script'
 ./kizuku --help | grep -Fq 'Desert, Neon, Rosewood, Arctic, Citrus'
 ./kizuku --help | grep -Fq 'ten popular four-colour palettes'
 ./kizuku --help | grep -Fq 'Shinko progress overlay'

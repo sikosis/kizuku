@@ -120,7 +120,9 @@ kizuku ./build.sh
 
 After each successful change, Kizuku asks whether to make another edit to the
 same script. Choosing Yes reloads the changed file before showing the Edit menu
-again.
+again. When editing is finished, Kizuku offers to run the script. Choosing Yes
+replaces the Kizuku process with the executable script, so the helper exits and
+the script runs directly through its own shebang.
 
 Kizuku previews the block and asks for confirmation before editing. It writes
 through a temporary file, atomically replaces the original, and preserves the
