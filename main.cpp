@@ -27,7 +27,7 @@ namespace fs = std::filesystem;
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.37"
+#define KIZUKU_VERSION "0.38"
 #endif
 
 constexpr const char* kReset = "\033[0m";
@@ -143,6 +143,17 @@ std::string shellDoubleQuoted(const std::string& value) {
     }
     escaped.push_back('"');
     return escaped;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+std::string shellWord(const std::string& value) {
+    const bool isSafe = !value.empty() && std::all_of(value.begin(), value.end(),
+        [](const unsigned char character) {
+            return std::isalnum(character) || character == '_' || character == '-' ||
+                   character == '.' || character == '/';
+        });
+    return isSafe ? value : shellSingleQuoted(value);
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
@@ -909,7 +920,8 @@ bool isOutputLogCandidate(const std::string& line) {
 //---------------------------------------------------------------------------------------------------------------------------------//
 
 
-std::optional<std::size_t> selectOutputLogLine(const std::vector<std::string>& lines) {
+std::optional<std::size_t> selectOutputLogLine(const std::vector<std::string>& lines,
+                                               const std::string& logFile) {
     std::vector<std::size_t> matches;
     for (std::size_t index = 0; index < lines.size(); ++index) {
         if (isOutputLogCandidate(lines[index])) {
@@ -923,7 +935,7 @@ std::optional<std::size_t> selectOutputLogLine(const std::vector<std::string>& l
     if (gUseHum) {
         constexpr const char* delimiter = "\t";
         std::vector<std::string> arguments = {
-            "choose", "--header", "Select a command to send to output.log:",
+            "choose", "--header", "Select a command to send to " + logFile + ":",
             "--height", "15", "--label-delimiter", delimiter,
         };
         for (const auto index : matches) {
@@ -956,7 +968,7 @@ std::optional<std::size_t> selectOutputLogLine(const std::vector<std::string>& l
                   << insertionPreview(lines[index]) << '\n';
     }
     while (true) {
-        const auto selection = prompt("Command to send to output.log");
+        const auto selection = prompt("Command to send to " + logFile);
         if (selection == "0") {
             return std::nullopt;
         }
@@ -1623,18 +1635,21 @@ bool editScriptOnce(const fs::path& path, std::string& error) {
             error = "no command lines were found in " + path.string();
             return false;
         }
-        const auto selectedLine = selectOutputLogLine(lines);
+        const auto logFile = prompt("Log file", "output.log");
+        const auto selectedLine = selectOutputLogLine(lines, logFile);
         if (!selectedLine) {
             error = "edit cancelled";
             return false;
         }
         const std::string original = lines[*selectedLine];
         const auto contentEnd = lines[*selectedLine].find_last_not_of(" \t");
-        lines[*selectedLine].insert(contentEnd + 1, " > output.log 2>&1");
+        lines[*selectedLine].insert(contentEnd + 1,
+            " > " + shellWord(logFile) + " 2>&1");
         showStyled("Logging preview", randomColour());
         std::cout << "Before: " << original << '\n'
                   << "After:  " << lines[*selectedLine] << "\n\n";
-        if (!confirm("Send this command's output to output.log in " + path.string() + "?")) {
+        if (!confirm("Send this command's output to " + logFile + " in " +
+                     path.string() + "?")) {
             error = "edit cancelled";
             return false;
         }

@@ -281,12 +281,19 @@ cmp "$test_dir/edit-fancy-git-pull-empty.expected" \
 # Append valid combined output and error logging to a selected command.
 printf '#!/bin/sh\n# make should stay untouched\nmake -j4   \n' > "$test_dir/edit-output-log.sh"
 chmod 740 "$test_dir/edit-output-log.sh"
-printf 'Output to Log\n1\ny\nn\n' \
+printf 'Output to Log\nbuild output.log\n1\ny\nn\n' \
     | ./kizuku "$test_dir/edit-output-log.sh" >/dev/null
 test -x "$test_dir/edit-output-log.sh"
 sh -n "$test_dir/edit-output-log.sh"
-grep -Fq 'make -j4 > output.log 2>&1' "$test_dir/edit-output-log.sh"
+grep -Fq "make -j4 > 'build output.log' 2>&1" "$test_dir/edit-output-log.sh"
 grep -Fq '# make should stay untouched' "$test_dir/edit-output-log.sh"
+
+# Pressing Enter at the filename prompt retains the output.log default.
+printf '#!/bin/sh\nmake test\n' > "$test_dir/edit-output-log-default.sh"
+printf 'Output to Log\n\n1\ny\nn\n' \
+    | ./kizuku "$test_dir/edit-output-log-default.sh" >/dev/null
+sh -n "$test_dir/edit-output-log-default.sh"
+grep -Fq 'make test > output.log 2>&1' "$test_dir/edit-output-log-default.sh"
 
 # Refuse Output to Log when a script contains only blank lines and comments.
 printf '#!/bin/sh\n\n# Nothing to run\n' > "$test_dir/edit-output-log-empty.sh"

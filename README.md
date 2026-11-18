@@ -141,10 +141,11 @@ as the placeholder and is retained when Enter is pressed. Kizuku changes only
 the project-name portion, preserving the Hum styling, `Builder` label, and
 version.
 
-Choose **Output to Log** to select a command line and append
-` > output.log 2>&1`. This sends both the command's standard output and standard
-error to `output.log`. Blank lines and comments are omitted from the selector,
-and Kizuku previews the changed line before updating the script.
+Choose **Output to Log** to enter a log filename and select a command line to
+redirect with `> <log-file> 2>&1`. The filename prompt defaults to `output.log`
+when Enter is pressed, and names containing spaces or shell characters are
+safely quoted. Blank lines and comments are omitted from the selector, and
+Kizuku previews the changed line before updating the script.
 
 Choose **Add Shinko** to insert the complete Shinko lifecycle into an existing
 build script at a selected source position. When the Shinko executable is
