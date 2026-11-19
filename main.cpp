@@ -28,7 +28,7 @@ namespace fs = std::filesystem;
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.43"
+#define KIZUKU_VERSION "0.44"
 #endif
 
 constexpr const char* kReset = "\033[0m";
@@ -1826,12 +1826,21 @@ bool editExistingScript(fs::path path, std::string& error, fs::path& editedPath,
     showStyled("Script updated successfully", randomColour());
 
     while (true) {
-        std::vector<std::string> actions = {"Edit script", "Run script"};
+        std::vector<std::string> actions = {"Kizuku Edit", "Edit script", "Run script"};
         if (::access(wombatExecutable().c_str(), X_OK) == 0) {
             actions.push_back("Wombat script");
         }
         actions.push_back("Close");
         const auto action = selectOption("What would you like to do next?", actions, "Close");
+        
+        if (action == "Kizuku Edit") {
+            if (!editScriptOnce(path, error)) {
+                std::cerr << "kizuku: " << error << '\n';
+                error.clear();
+            }
+            continue;
+        }
+        
         if (action == "Edit script") {
             if (!runNanoScript(path, error)) {
                 std::cerr << "kizuku: " << error << '\n';
@@ -1839,6 +1848,7 @@ bool editExistingScript(fs::path path, std::string& error, fs::path& editedPath,
             }
             continue;
         }
+
         if (action == "Wombat script") {
             if (!runWombatScript(path, error)) {
                 std::cerr << "kizuku: " << error << '\n';
@@ -1846,6 +1856,7 @@ bool editExistingScript(fs::path path, std::string& error, fs::path& editedPath,
             }
             continue;
         }
+
         completion = action == "Run script" ? EditCompletion::Run : EditCompletion::Close;
         editedPath = path;
         return true;
@@ -2141,6 +2152,7 @@ bool writeBuildFile(const BuildFile& buildFile, std::string& error) {
            << shellDoubleQuoted(buildFile.title) << "\n\n";
     output << "if hum confirm \"Continue?\"; then\n\n";
     if (buildFile.useShinko) {
+        output << "# Shinko - walk the path bro\n";
         output << "if [ -x " << kShinkoPath << " ]; then\n";
         output << "    " << kShinkoPath << " \"$PWD\" &\n";
         output << "    shinko_team=$!\n";
@@ -2273,7 +2285,7 @@ bool writeGitFile(const GitFile& gitFile, std::string& error) {
 
 WizardResult runWizard() {
     const auto projectName = prompt("Project name", "My Project");
-    const auto version = prompt("Builder version", "1.0");
+    const auto version = prompt("Builder version", "0.1");
     const auto directory = selectProjectDirectory(projectName);
     const Theme& theme = selectTheme();
 
@@ -2299,15 +2311,17 @@ WizardResult runWizard() {
     const fs::path output = steps.empty() ? fs::path{} : fs::path(prompt("Output build file", "build.sh"));
     const bool useShinko = !steps.empty() &&
         confirm("Add Shinko (progress bar) to this build?", false);
-    std::optional<std::string> ttfxText;
-    if (!steps.empty() && confirm("Add TTFX output to this build?", false)) {
-        ttfxText = prompt("TTFX text", projectName + " build");
-    }
+    
     std::optional<std::string> customTitleText;
     if (!steps.empty() && confirm("Add a custom DiamFont title to this build?", false)) {
         customTitleText = prompt("Custom title text", projectName);
     }
 
+    std::optional<std::string> ttfxText;
+    if (!steps.empty() && confirm("Add TTFX output to this build?", false)) {
+        ttfxText = prompt("TTFX text", projectName + " build");
+    }
+    
     std::optional<GitFile> gitFile;
     if (confirm("Create a Git commit-and-push script?", false)) {
         gitFile = GitFile{projectName, prompt("Output Git script", "git.sh"),
@@ -2338,9 +2352,9 @@ void printUsage(const char* executable) {
               << "and project-directory selection. Plain terminal prompts are used otherwise.\n"
               << "Generated builds can optionally launch and stop a Shinko progress overlay.\n"
               << "They can also pipe custom text through TTFX using a random effect.\n"
-              << "DiamFont custom titles can be generated and piped through TTFX.\n"
+              << "\n"
               << "Built-in themes: Kizuku (default), Coast, Sakura, Forest, Sunset, Lavender, Slate,\n"
-              << "Desert, Neon, Rosewood, Arctic, Citrus, and ten popular four-colour palettes.\n";
+              << "Desert, Neon, Rosewood, Arctic, Citrus and ten popular four-colour palettes.\n";
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
