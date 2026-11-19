@@ -1551,12 +1551,13 @@ bool editScriptOnce(const fs::path& path, std::string& error) {
         return false;
     }
 
-    const auto type = selectOption("Edit action or block to add",
-        {"Hum Confirm", "Check Hum Confirm Status", "Update Script Version", "Update Title",
-         "Output to Log", "Add Shinko", "TTFX Output", "Add Custom Title",
+    const auto type = selectOption("Edit Actions:",
+        {"Update Script Version", "Update Title", "Hum Confirm", "Check Hum Confirm Status",
+         "Output to Log", "Add Shinko",  "Add Custom Title", "TTFX Output",
          "All or Nothing", "Git Pull Basic", "Fancy Git Pull", "Git Last Commit Show",
          "Hum Choose", "Hum Input", "Hum File Picker", "Hum Style", "Hum Write", "Hum Spin"},
         "Hum Confirm");
+    
     if (type == "Check Hum Confirm Status") {
         const bool hasHumConfirmation = std::any_of(lines.begin(), lines.end(),
             [](const std::string& scriptLine) {
