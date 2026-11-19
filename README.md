@@ -118,11 +118,11 @@ picker:
 kizuku ./build.sh
 ```
 
-After each successful change, Kizuku asks whether to make another edit to the
-same script. Choosing Yes reloads the changed file before showing the Edit menu
-again. When editing is finished, Kizuku offers to run the script. Choosing Yes
-replaces the Kizuku process with the executable script, so the helper exits and
-the script runs directly through its own shebang.
+After each successful change, Kizuku shows an end-of-edit menu. **Edit script**
+reloads the changed file and returns to the Edit menu, **Run script** replaces
+Kizuku with the executable script, and **Close** exits normally. When
+`/boot/system/non-packaged/bin/wombat` is executable, **Wombat script** is also
+shown and replaces Kizuku with Wombat, passing it the edited script.
 
 Kizuku previews the block and asks for confirmation before editing. It writes
 through a temporary file, atomically replaces the original, and preserves the

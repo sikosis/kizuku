@@ -27,7 +27,7 @@ namespace fs = std::filesystem;
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.4"
+#define KIZUKU_VERSION "0.41"
 #endif
 
 constexpr const char* kReset = "\033[0m";
@@ -38,6 +38,7 @@ constexpr const char* kName = "Kizuku";
 constexpr const char* kVersion = KIZUKU_VERSION;
 constexpr const char* kShinkoPath = "/boot/home/config/non-packaged/apps/Shinko";
 constexpr const char* kTtfxPath = "/boot/home/projects/ttfx-haiku/ttfx";
+constexpr const char* kWombatPath = "/boot/system/non-packaged/bin/wombat";
 
 bool gUseHum = false;
 
@@ -108,6 +109,12 @@ struct GitFile {
 struct WizardResult {
     BuildFile buildFile;
     std::optional<GitFile> gitFile;
+};
+
+enum class EditCompletion {
+    Close,
+    Run,
+    Wombat,
 };
 
 std::string trim(const std::string& value) {
@@ -1724,7 +1731,8 @@ bool editScriptOnce(const fs::path& path, std::string& error) {
 //---------------------------------------------------------------------------------------------------------------------------------//
 
 
-bool editExistingScript(fs::path path, std::string& error, fs::path& editedPath) {
+bool editExistingScript(fs::path path, std::string& error, fs::path& editedPath,
+                        EditCompletion& completion) {
     if (path.empty() && gUseHum) {
         const fs::path start = fs::current_path();
         if (const auto selection = captureHum({"file", "--file", "--no-directory",
@@ -1743,14 +1751,27 @@ bool editExistingScript(fs::path path, std::string& error, fs::path& editedPath)
         if (!editScriptOnce(path, error)) {
             if (changed && error == "edit cancelled") {
                 error.clear();
-                break;
+            } else {
+                return false;
             }
-            return false;
+        } else {
+            changed = true;
+            showStyled("Script updated successfully", randomColour());
         }
-        changed = true;
-        if (!confirm("Make another edit to " + path.string() + "?", false)) {
-            break;
+
+        std::vector<std::string> actions = {"Edit script", "Run script"};
+        if (::access(kWombatPath, X_OK) == 0) {
+            actions.push_back("Wombat script");
         }
+        actions.push_back("Close");
+        const auto action = selectOption("What would you like to do next?", actions, "Close");
+        if (action == "Edit script") {
+            continue;
+        }
+        completion = action == "Run script" ? EditCompletion::Run :
+                     action == "Wombat script" ? EditCompletion::Wombat :
+                     EditCompletion::Close;
+        break;
     }
     editedPath = path;
     return true;
@@ -1758,12 +1779,16 @@ bool editExistingScript(fs::path path, std::string& error, fs::path& editedPath)
 //---------------------------------------------------------------------------------------------------------------------------------//
 
 
-bool offerToRunEditedScript(const fs::path& path, std::string& error) {
-    if (!confirm("Run " + path.string() + " now?", false)) {
+bool completeEditedScript(const fs::path& path, EditCompletion completion, std::string& error) {
+    if (completion == EditCompletion::Close) {
         return true;
     }
-    if (::access(path.c_str(), X_OK) != 0) {
+    if (completion == EditCompletion::Run && ::access(path.c_str(), X_OK) != 0) {
         error = path.string() + " is not executable";
+        return false;
+    }
+    if (completion == EditCompletion::Wombat && ::access(kWombatPath, X_OK) != 0) {
+        error = std::string(kWombatPath) + " is not executable";
         return false;
     }
 
@@ -1774,11 +1799,19 @@ bool offerToRunEditedScript(const fs::path& path, std::string& error) {
         return false;
     }
 
-    showStyled("Launching " + absolutePath.string(), randomColour());
+    const std::string command = completion == EditCompletion::Wombat
+        ? std::string(kWombatPath) : absolutePath.string();
+    showStyled(completion == EditCompletion::Wombat
+        ? "Opening " + absolutePath.string() + " with Wombat"
+        : "Launching " + absolutePath.string(), randomColour());
     std::cout.flush();
     std::cerr.flush();
-    ::execl(absolutePath.c_str(), absolutePath.c_str(), static_cast<char*>(nullptr));
-    error = "could not run " + absolutePath.string() + ": " +
+    if (completion == EditCompletion::Wombat) {
+        ::execl(kWombatPath, kWombatPath, absolutePath.c_str(), static_cast<char*>(nullptr));
+    } else {
+        ::execl(absolutePath.c_str(), absolutePath.c_str(), static_cast<char*>(nullptr));
+    }
+    error = "could not run " + command + ": " +
             std::error_code(errno, std::generic_category()).message();
     return false;
 }
@@ -2235,7 +2268,7 @@ void printUsage(const char* executable) {
               << "  SCRIPT           Open this file directly in the Edit workflow\n\n"
               << "Interactive workflows:\n"
               << "  Create new scripts       Generate themed build and Git helpers\n"
-              << "  Edit an existing script  Edit, then optionally run the selected script\n"
+              << "  Edit an existing script  Edit, run, or open the script with Wombat\n"
               << "  Restyle a script         Replace Hum hex colours with a selected theme\n"
               << "  Quit                     Exit without making changes\n\n"
               << "When Hum is available, Kizuku uses it for prompts, styling, confirmation,\n"
@@ -2266,7 +2299,8 @@ int main(int argc, char** argv) {
         } else if (argc == 2 && std::string(argv[1]).rfind("-", 0) != 0) {
             std::string editError;
             fs::path editedPath;
-            if (!editExistingScript(fs::path(argv[1]), editError, editedPath)) {
+            EditCompletion completion = EditCompletion::Close;
+            if (!editExistingScript(fs::path(argv[1]), editError, editedPath, completion)) {
                 if (editError != "edit cancelled") {
                     std::cerr << "kizuku: " << editError << "\n";
                     return 1;
@@ -2274,8 +2308,7 @@ int main(int argc, char** argv) {
                 std::cout << "No changes made.\n";
                 return 0;
             }
-            showStyled("Script updated successfully", randomColour());
-            if (!offerToRunEditedScript(editedPath, editError)) {
+            if (!completeEditedScript(editedPath, completion, editError)) {
                 std::cerr << "kizuku: " << editError << "\n";
                 return 1;
             }
@@ -2298,7 +2331,8 @@ int main(int argc, char** argv) {
             if (action == "Edit an existing script") {
                 std::string editError;
                 fs::path editedPath;
-                if (!editExistingScript({}, editError, editedPath)) {
+                EditCompletion completion = EditCompletion::Close;
+                if (!editExistingScript({}, editError, editedPath, completion)) {
                     if (editError != "edit cancelled") {
                         std::cerr << "kizuku: " << editError << "\n";
                         return 1;
@@ -2306,8 +2340,7 @@ int main(int argc, char** argv) {
                     std::cout << "No changes made.\n";
                     return 0;
                 }
-                showStyled("Script updated successfully", randomColour());
-                if (!offerToRunEditedScript(editedPath, editError)) {
+                if (!completeEditedScript(editedPath, completion, editError)) {
                     std::cerr << "kizuku: " << editError << "\n";
                     return 1;
                 }
