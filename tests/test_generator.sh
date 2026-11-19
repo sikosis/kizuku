@@ -373,6 +373,16 @@ run_output=$(printf 'Update Script Version\n1\nIncrement (+0.1)\ny\nRun script\n
 printf '%s\n' "$run_output" | grep -Fq 'edited-script-ran'
 grep -Fq '# Runner v0.2' "$test_dir/edit-and-run.sh"
 
+# Edit script opens Nano as a child and then returns to the same menu.
+mkdir -p "$test_dir/fake-bin"
+printf '#!/bin/sh\nprintf "fake-nano:%%s\\n" "$1"\n' > "$test_dir/fake-bin/nano"
+chmod 750 "$test_dir/fake-bin/nano"
+printf '#!/bin/sh\n' > "$test_dir/edit-and-nano.sh"
+nano_output=$(printf 'Git Last Commit Show\n\ny\nEdit script\nClose\n' \
+    | PATH="$test_dir/fake-bin:$PATH" ./kizuku "$test_dir/edit-and-nano.sh")
+printf '%s\n' "$nano_output" | grep -Fq "fake-nano:$test_dir/edit-and-nano.sh"
+test "$(printf '%s\n' "$nano_output" | grep -Fc 'What would you like to do next?')" -eq 2
+
 # Wombat runs as a child and returns to the same end-of-edit menu.
 printf '#!/bin/sh\nprintf "fake-wombat:%%s\\n" "$1"\n' > "$test_dir/fake-wombat"
 chmod 750 "$test_dir/fake-wombat"
@@ -453,8 +463,12 @@ printf '%s\n' \
     'fi' \
     > "$test_dir/edit-confirm-status.sh"
 chmod 751 "$test_dir/edit-confirm-status.sh"
-confirm_status_output=$(printf 'Edit an existing script\n%s/edit-confirm-status.sh\nCheck Hum Confirm Status\n1\nNo\ny\nEdit script\nCheck Hum Confirm Status\n2\nYes\ny\nClose\n' \
+first_confirm_status_output=$(printf 'Edit an existing script\n%s/edit-confirm-status.sh\nCheck Hum Confirm Status\n1\nNo\ny\nClose\n' \
     "$test_dir" | ./kizuku)
+second_confirm_status_output=$(printf 'Edit an existing script\n%s/edit-confirm-status.sh\nCheck Hum Confirm Status\n2\nYes\ny\nClose\n' \
+    "$test_dir" | ./kizuku)
+confirm_status_output="$first_confirm_status_output
+$second_confirm_status_output"
 printf '%s\n' "$confirm_status_output" | grep -Fq '[default: not set]'
 if [ -x /boot/system/non-packaged/bin/wombat ]; then
     printf '%s\n' "$confirm_status_output" | grep -Fq 'Wombat script'
@@ -566,7 +580,7 @@ version=$(tr -d '\r\n' < VERSION)
 test "$(./kizuku --version)" = "Kizuku v$version"
 ./kizuku --help | grep -Fq "Kizuku v$version"
 ./kizuku --help | grep -Fq 'SCRIPT           Open this file directly in the Edit workflow'
-./kizuku --help | grep -Fq 'open the script with Wombat'
+./kizuku --help | grep -Fq 'Open in Nano, run, or format with Wombat'
 ./kizuku --help | grep -Fq 'Desert, Neon, Rosewood, Arctic, Citrus'
 ./kizuku --help | grep -Fq 'ten popular four-colour palettes'
 ./kizuku --help | grep -Fq 'Shinko progress overlay'

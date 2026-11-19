@@ -119,8 +119,9 @@ kizuku ./build.sh
 ```
 
 After each successful change, Kizuku shows an end-of-edit menu. **Edit script**
-reloads the changed file and returns to the Edit menu, **Run script** replaces
-Kizuku with the executable script, and **Close** exits normally. When
+opens the changed file in Nano, waits for the editor to close, and returns to
+the same menu. **Run script** replaces Kizuku with the executable script, and
+**Close** exits normally. When
 `/boot/system/non-packaged/bin/wombat` is executable, **Wombat script** is also
 shown. It runs Wombat interactively with the edited script, waits for Wombat to
 finish, and then returns to the same end-of-edit menu. Developers can override

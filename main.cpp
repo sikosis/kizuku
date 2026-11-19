@@ -28,7 +28,7 @@ namespace fs = std::filesystem;
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.42"
+#define KIZUKU_VERSION "0.43"
 #endif
 
 constexpr const char* kReset = "\033[0m";
@@ -1738,10 +1738,12 @@ bool editScriptOnce(const fs::path& path, std::string& error) {
 //---------------------------------------------------------------------------------------------------------------------------------//
 
 
-bool runWombatScript(const fs::path& path, std::string& error) {
-    const auto executable = wombatExecutable();
-    if (::access(executable.c_str(), X_OK) != 0) {
-        error = executable + " is not executable";
+bool runToolWithScript(const std::string& executable, const std::string& name,
+                       const fs::path& path, std::string& error) {
+    const bool hasPath = executable.find('/') != std::string::npos;
+    if ((hasPath && ::access(executable.c_str(), X_OK) != 0) ||
+        (!hasPath && !executableInPath(executable))) {
+        error = executable + " is not available";
         return false;
     }
 
@@ -1752,18 +1754,18 @@ bool runWombatScript(const fs::path& path, std::string& error) {
         return false;
     }
 
-    showStyled("Opening " + absolutePath.string() + " with Wombat", randomColour());
+    showStyled("Opening " + absolutePath.string() + " with " + name, randomColour());
     std::cout.flush();
     std::cerr.flush();
     const pid_t child = ::fork();
     if (child < 0) {
-        error = "could not start Wombat: " +
+        error = "could not start " + name + ": " +
                 std::error_code(errno, std::generic_category()).message();
         return false;
     }
     if (child == 0) {
-        ::execl(executable.c_str(), executable.c_str(), absolutePath.c_str(),
-                static_cast<char*>(nullptr));
+        ::execlp(executable.c_str(), executable.c_str(), absolutePath.c_str(),
+                 static_cast<char*>(nullptr));
         ::_exit(127);
     }
 
@@ -1772,7 +1774,7 @@ bool runWombatScript(const fs::path& path, std::string& error) {
         if (errno == EINTR) {
             continue;
         }
-        error = "could not wait for Wombat: " +
+        error = "could not wait for " + name + ": " +
                 std::error_code(errno, std::generic_category()).message();
         return false;
     }
@@ -1780,13 +1782,25 @@ bool runWombatScript(const fs::path& path, std::string& error) {
         return true;
     }
     if (WIFEXITED(status)) {
-        error = "Wombat exited with status " + std::to_string(WEXITSTATUS(status));
+        error = name + " exited with status " + std::to_string(WEXITSTATUS(status));
     } else if (WIFSIGNALED(status)) {
-        error = "Wombat was stopped by signal " + std::to_string(WTERMSIG(status));
+        error = name + " was stopped by signal " + std::to_string(WTERMSIG(status));
     } else {
-        error = "Wombat did not finish normally";
+        error = name + " did not finish normally";
     }
     return false;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+bool runWombatScript(const fs::path& path, std::string& error) {
+    return runToolWithScript(wombatExecutable(), "Wombat", path, error);
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+bool runNanoScript(const fs::path& path, std::string& error) {
+    return runToolWithScript("nano", "Nano", path, error);
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
@@ -1805,41 +1819,36 @@ bool editExistingScript(fs::path path, std::string& error, fs::path& editedPath,
         path = prompt("Script to edit");
     }
 
-    bool changed = false;
-    while (true) {
-        error.clear();
-        if (!editScriptOnce(path, error)) {
-            if (changed && error == "edit cancelled") {
-                error.clear();
-            } else {
-                return false;
-            }
-        } else {
-            changed = true;
-            showStyled("Script updated successfully", randomColour());
-        }
+    error.clear();
+    if (!editScriptOnce(path, error)) {
+        return false;
+    }
+    showStyled("Script updated successfully", randomColour());
 
-        while (true) {
-            std::vector<std::string> actions = {"Edit script", "Run script"};
-            if (::access(wombatExecutable().c_str(), X_OK) == 0) {
-                actions.push_back("Wombat script");
-            }
-            actions.push_back("Close");
-            const auto action = selectOption("What would you like to do next?", actions, "Close");
-            if (action == "Edit script") {
-                break;
-            }
-            if (action == "Wombat script") {
-                if (!runWombatScript(path, error)) {
-                    std::cerr << "kizuku: " << error << '\n';
-                    error.clear();
-                }
-                continue;
-            }
-            completion = action == "Run script" ? EditCompletion::Run : EditCompletion::Close;
-            editedPath = path;
-            return true;
+    while (true) {
+        std::vector<std::string> actions = {"Edit script", "Run script"};
+        if (::access(wombatExecutable().c_str(), X_OK) == 0) {
+            actions.push_back("Wombat script");
         }
+        actions.push_back("Close");
+        const auto action = selectOption("What would you like to do next?", actions, "Close");
+        if (action == "Edit script") {
+            if (!runNanoScript(path, error)) {
+                std::cerr << "kizuku: " << error << '\n';
+                error.clear();
+            }
+            continue;
+        }
+        if (action == "Wombat script") {
+            if (!runWombatScript(path, error)) {
+                std::cerr << "kizuku: " << error << '\n';
+                error.clear();
+            }
+            continue;
+        }
+        completion = action == "Run script" ? EditCompletion::Run : EditCompletion::Close;
+        editedPath = path;
+        return true;
     }
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
@@ -2322,7 +2331,7 @@ void printUsage(const char* executable) {
               << "  SCRIPT           Open this file directly in the Edit workflow\n\n"
               << "Interactive workflows:\n"
               << "  Create new scripts       Generate themed build and Git helpers\n"
-              << "  Edit an existing script  Edit, run, or open the script with Wombat\n"
+              << "  Edit an existing script  Open in Nano, run, or format with Wombat\n"
               << "  Restyle a script         Replace Hum hex colours with a selected theme\n"
               << "  Quit                     Exit without making changes\n\n"
               << "When Hum is available, Kizuku uses it for prompts, styling, confirmation,\n"
