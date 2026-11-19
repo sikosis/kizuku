@@ -373,6 +373,16 @@ run_output=$(printf 'Update Script Version\n1\nIncrement (+0.1)\ny\nRun script\n
 printf '%s\n' "$run_output" | grep -Fq 'edited-script-ran'
 grep -Fq '# Runner v0.2' "$test_dir/edit-and-run.sh"
 
+# Wombat runs as a child and returns to the same end-of-edit menu.
+printf '#!/bin/sh\nprintf "fake-wombat:%%s\\n" "$1"\n' > "$test_dir/fake-wombat"
+chmod 750 "$test_dir/fake-wombat"
+printf '#!/bin/sh\n' > "$test_dir/edit-and-wombat.sh"
+wombat_output=$(printf 'Git Last Commit Show\n\ny\nWombat script\nClose\n' \
+    | KIZUKU_WOMBAT_PATH="$test_dir/fake-wombat" \
+        ./kizuku "$test_dir/edit-and-wombat.sh")
+printf '%s\n' "$wombat_output" | grep -Fq "fake-wombat:$test_dir/edit-and-wombat.sh"
+test "$(printf '%s\n' "$wombat_output" | grep -Fc 'What would you like to do next?')" -eq 2
+
 # Collect every generated step command into one all-or-nothing confirmation.
 cp "$test_dir/build.sh" "$test_dir/edit-all-or-nothing.sh"
 printf 'Edit an existing script\n%s/edit-all-or-nothing.sh\nAll or Nothing\n\nNo\n\ny\nClose\n' \

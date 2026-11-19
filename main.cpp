@@ -18,6 +18,7 @@
 #include <vector>
 
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "diamfont_data.h"
@@ -27,7 +28,7 @@ namespace fs = std::filesystem;
 namespace {
 
 #ifndef KIZUKU_VERSION
-#define KIZUKU_VERSION "0.41"
+#define KIZUKU_VERSION "0.42"
 #endif
 
 constexpr const char* kReset = "\033[0m";
@@ -114,7 +115,6 @@ struct WizardResult {
 enum class EditCompletion {
     Close,
     Run,
-    Wombat,
 };
 
 std::string trim(const std::string& value) {
@@ -319,6 +319,13 @@ bool executableInPath(const std::string& executable) {
         start = end + 1;
     }
     return false;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+std::string wombatExecutable() {
+    const char* overridePath = std::getenv("KIZUKU_WOMBAT_PATH");
+    return overridePath != nullptr && *overridePath != '\0' ? overridePath : kWombatPath;
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
@@ -1731,6 +1738,59 @@ bool editScriptOnce(const fs::path& path, std::string& error) {
 //---------------------------------------------------------------------------------------------------------------------------------//
 
 
+bool runWombatScript(const fs::path& path, std::string& error) {
+    const auto executable = wombatExecutable();
+    if (::access(executable.c_str(), X_OK) != 0) {
+        error = executable + " is not executable";
+        return false;
+    }
+
+    std::error_code absoluteError;
+    const auto absolutePath = fs::absolute(path, absoluteError);
+    if (absoluteError) {
+        error = "cannot resolve the script path: " + absoluteError.message();
+        return false;
+    }
+
+    showStyled("Opening " + absolutePath.string() + " with Wombat", randomColour());
+    std::cout.flush();
+    std::cerr.flush();
+    const pid_t child = ::fork();
+    if (child < 0) {
+        error = "could not start Wombat: " +
+                std::error_code(errno, std::generic_category()).message();
+        return false;
+    }
+    if (child == 0) {
+        ::execl(executable.c_str(), executable.c_str(), absolutePath.c_str(),
+                static_cast<char*>(nullptr));
+        ::_exit(127);
+    }
+
+    int status = 0;
+    while (::waitpid(child, &status, 0) < 0) {
+        if (errno == EINTR) {
+            continue;
+        }
+        error = "could not wait for Wombat: " +
+                std::error_code(errno, std::generic_category()).message();
+        return false;
+    }
+    if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+        return true;
+    }
+    if (WIFEXITED(status)) {
+        error = "Wombat exited with status " + std::to_string(WEXITSTATUS(status));
+    } else if (WIFSIGNALED(status)) {
+        error = "Wombat was stopped by signal " + std::to_string(WTERMSIG(status));
+    } else {
+        error = "Wombat did not finish normally";
+    }
+    return false;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
 bool editExistingScript(fs::path path, std::string& error, fs::path& editedPath,
                         EditCompletion& completion) {
     if (path.empty() && gUseHum) {
@@ -1759,22 +1819,28 @@ bool editExistingScript(fs::path path, std::string& error, fs::path& editedPath,
             showStyled("Script updated successfully", randomColour());
         }
 
-        std::vector<std::string> actions = {"Edit script", "Run script"};
-        if (::access(kWombatPath, X_OK) == 0) {
-            actions.push_back("Wombat script");
+        while (true) {
+            std::vector<std::string> actions = {"Edit script", "Run script"};
+            if (::access(wombatExecutable().c_str(), X_OK) == 0) {
+                actions.push_back("Wombat script");
+            }
+            actions.push_back("Close");
+            const auto action = selectOption("What would you like to do next?", actions, "Close");
+            if (action == "Edit script") {
+                break;
+            }
+            if (action == "Wombat script") {
+                if (!runWombatScript(path, error)) {
+                    std::cerr << "kizuku: " << error << '\n';
+                    error.clear();
+                }
+                continue;
+            }
+            completion = action == "Run script" ? EditCompletion::Run : EditCompletion::Close;
+            editedPath = path;
+            return true;
         }
-        actions.push_back("Close");
-        const auto action = selectOption("What would you like to do next?", actions, "Close");
-        if (action == "Edit script") {
-            continue;
-        }
-        completion = action == "Run script" ? EditCompletion::Run :
-                     action == "Wombat script" ? EditCompletion::Wombat :
-                     EditCompletion::Close;
-        break;
     }
-    editedPath = path;
-    return true;
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
@@ -1783,12 +1849,8 @@ bool completeEditedScript(const fs::path& path, EditCompletion completion, std::
     if (completion == EditCompletion::Close) {
         return true;
     }
-    if (completion == EditCompletion::Run && ::access(path.c_str(), X_OK) != 0) {
+    if (::access(path.c_str(), X_OK) != 0) {
         error = path.string() + " is not executable";
-        return false;
-    }
-    if (completion == EditCompletion::Wombat && ::access(kWombatPath, X_OK) != 0) {
-        error = std::string(kWombatPath) + " is not executable";
         return false;
     }
 
@@ -1799,19 +1861,11 @@ bool completeEditedScript(const fs::path& path, EditCompletion completion, std::
         return false;
     }
 
-    const std::string command = completion == EditCompletion::Wombat
-        ? std::string(kWombatPath) : absolutePath.string();
-    showStyled(completion == EditCompletion::Wombat
-        ? "Opening " + absolutePath.string() + " with Wombat"
-        : "Launching " + absolutePath.string(), randomColour());
+    showStyled("Launching " + absolutePath.string(), randomColour());
     std::cout.flush();
     std::cerr.flush();
-    if (completion == EditCompletion::Wombat) {
-        ::execl(kWombatPath, kWombatPath, absolutePath.c_str(), static_cast<char*>(nullptr));
-    } else {
-        ::execl(absolutePath.c_str(), absolutePath.c_str(), static_cast<char*>(nullptr));
-    }
-    error = "could not run " + command + ": " +
+    ::execl(absolutePath.c_str(), absolutePath.c_str(), static_cast<char*>(nullptr));
+    error = "could not run " + absolutePath.string() + ": " +
             std::error_code(errno, std::generic_category()).message();
     return false;
 }
