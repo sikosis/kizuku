@@ -1822,7 +1822,7 @@ bool editExistingScript(fs::path path, std::string& error, fs::path& editedPath,
 
     error.clear();
     if (!editScriptOnce(path, error)) {
-        return false;
+        return true; // was false
     }
     showStyled("Script updated successfully", randomColour());
 
