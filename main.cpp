@@ -1832,6 +1832,7 @@ bool editExistingScript(fs::path path, std::string& error, fs::path& editedPath,
             actions.push_back("Wombat script");
         }
         actions.push_back("Close");
+        std::cout << "\n";
         const auto action = selectOption("What would you like to do next?", actions, "Close");
         
         if (action == "Kizuku Edit") {
